@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, Query, UploadFile, File, Form, HTTPException
 from sqlalchemy.orm import Session, joinedload
 from ..db import get_db
 from ..models import IncomingQuestion, IncomingQuestionAttachment
@@ -69,17 +69,21 @@ async def create_incoming(
     db.add(row)
     db.flush()
 
-    for f in files:
-        stored_path, size = save_upload_file(f, str(row.id))
-        attachment = IncomingQuestionAttachment(
-            question_id=row.id,
-            uploader_role="student",
-            original_name=f.filename,
-            stored_path=stored_path,
-            mime_type=f.content_type,
-            file_size=size,
-        )
-        db.add(attachment)
+    try:
+        for f in files:
+            stored_path, size = save_upload_file(f, str(row.id))
+            attachment = IncomingQuestionAttachment(
+                question_id=row.id,
+                uploader_role="student",
+                original_name=f.filename or "file",
+                stored_path=stored_path,
+                mime_type=f.content_type or "application/octet-stream",
+                file_size=size,
+            )
+            db.add(attachment)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     db.commit()
 
