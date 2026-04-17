@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { getClientId } from "../../lib/clientId";
 
-const API_BASE = process.env.NEXT_PUBLIC_API || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API ?? "";
 
 function clsx(...xs) {
   return xs.filter(Boolean).join(" ");

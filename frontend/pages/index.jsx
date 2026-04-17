@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { getClientId } from "../lib/clientId";
 
-const API_BASE = process.env.NEXT_PUBLIC_API || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API ?? "";
 
 const TOPICS = [
   { key: "session", title: "Сессия", hint: "когда зимняя сессия" },
