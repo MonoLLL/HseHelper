@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+:root{
+  --hse-blue: 15 45 105;
+  --hse-blue2: 35 75 155;
+  --hse-sky: 205 220 240;
+
+  --ink-900: 17 24 39;
+  --ink-700: 55 65 81;
+  --ink-500: 107 114 128;
+  --ink-200: 229 231 235;
+  --ink-100: 243 244 246;
+}
+
+html, body { height: 100%; }
+
+body {
+  color: rgb(var(--ink-900));
+  background: rgb(var(--ink-100));
+}
