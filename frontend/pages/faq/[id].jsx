@@ -1,9 +1,9 @@
 import { useRouter } from "next/router";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { getClientId } from "../../lib/clientId";
 
-const API_BASE = process.env.NEXT_PUBLIC_API ?? "";
+const API_BASE = process.env.NEXT_PUBLIC_API || process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
 
 function clsx(...xs) {
   return xs.filter(Boolean).join(" ");
@@ -86,7 +86,7 @@ export default function FaqPage() {
   const [incomingSent, setIncomingSent] = useState(false);
   const [incomingErr, setIncomingErr] = useState("");
 
-  const questionText = useMemo(() => faq?.question || "", [faq]);
+  const questionText = faq?.question || "";
 
   useEffect(() => {
     if (!id) return;
@@ -153,8 +153,7 @@ export default function FaqPage() {
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-full bg-[rgb(var(--hse-blue))] shadow-sm" />
             <div className="leading-tight">
-              <div className="text-xs text-[rgb(var(--ink-500))]">НИУ ВШЭ · учебный офис</div>
-              <div className="text-base font-semibold text-[rgb(var(--ink-900))]">Uni QA System</div>
+              <div className="text-sm font-semibold text-[rgb(var(--ink-900))]">НИУ ВШЭ · учебный офис</div>
             </div>
           </div>
 
@@ -329,7 +328,7 @@ export default function FaqPage() {
         <div className="h-1 bg-[rgb(var(--hse-sky))]" />
         <div className="mx-auto max-w-6xl px-6 py-8">
           <div className="text-sm text-[rgb(var(--ink-500))]">
-            Uni QA System · учебный офис. Официальные документы и регламенты — на сайте университета.
+            Учебный офис. Официальные документы и регламенты — на сайте университета.
           </div>
         </div>
       </footer>

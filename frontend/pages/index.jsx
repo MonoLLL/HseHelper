@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { getClientId } from "../lib/clientId";
 
-const API_BASE = process.env.NEXT_PUBLIC_API ?? "";
+const API_BASE = process.env.NEXT_PUBLIC_API || process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
 
 const TOPICS = [
   { key: "session", title: "Сессия", hint: "когда зимняя сессия" },
@@ -39,19 +39,6 @@ async function apiGet(url) {
   if (!r.ok) {
     const t = await r.text().catch(() => "");
     throw new Error(`GET ${url} -> ${r.status} ${t}`);
-  }
-  return r.json();
-}
-
-async function apiPost(url, body) {
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) {
-    const t = await r.text().catch(() => "");
-    throw new Error(`POST ${url} -> ${r.status} ${t}`);
   }
   return r.json();
 }
@@ -230,10 +217,7 @@ export default function Home() {
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-full bg-[rgb(var(--hse-blue))] shadow-sm" />
             <div className="leading-tight">
-              <div className="text-xs text-[rgb(var(--ink-500))]">НИУ ВШЭ · учебный офис</div>
-              <div className="text-base font-semibold text-[rgb(var(--ink-900))]">
-                Uni QA System
-              </div>
+              <div className="text-sm font-semibold text-[rgb(var(--ink-900))]">НИУ ВШЭ · учебный офис</div>
             </div>
           </div>
 
@@ -589,7 +573,7 @@ export default function Home() {
         <div className="h-1 bg-[rgb(var(--hse-sky))]" />
         <div className="mx-auto max-w-6xl px-6 py-8">
           <div className="text-sm text-[rgb(var(--ink-500))]">
-            Uni QA System · учебный офис. Официальные документы и регламенты - на сайте университета.
+            Учебный офис. Официальные документы и регламенты - на сайте университета.
           </div>
         </div>
       </footer>

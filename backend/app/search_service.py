@@ -1,5 +1,6 @@
 import os
 from meilisearch import Client
+from sqlalchemy.orm import Session
 
 MEILI_HOST = os.getenv("MEILI_HOST", "http://localhost:7700")
 MEILI_MASTER_KEY = os.getenv("MEILI_MASTER_KEY", "master_key_please_change")
@@ -20,6 +21,13 @@ def ensure_index():
 def index_faq(doc):
     ensure_index()
     client.index(INDEX_NAME).add_documents([doc])
+
+
+def reindex_faqs(rows: list[dict]):
+    ensure_index()
+    client.index(INDEX_NAME).delete_all_documents()
+    if rows:
+        client.index(INDEX_NAME).add_documents(rows)
 
 def search(q: str, filters: dict | None = None, limit: int = 5):
     ensure_index()

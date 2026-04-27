@@ -1,24 +1,26 @@
 import asyncio
+import html
 import logging
 import os
 import tempfile
-import httpx
-import tempfile
-from pathlib import Path
-from aiogram.types import FSInputFile
-
-
 from aiogram import Bot, Dispatcher, F
-from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
-from aiogram.types import Message, CallbackQuery
+from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
 
+from api import (
+    append_incoming_message,
+    close_incoming,
+    create_incoming,
+    list_incoming,
+    search_faq,
+)
 from config import BOT_TOKEN
-from api import search_faq, create_incoming, list_incoming
+from keyboards import dialog_draft_kb, faq_not_found_kb, files_ready_kb, incoming_actions_kb, main_kb
 from states import AskFlow
-from keyboards import faq_not_found_kb, files_ready_kb, main_kb
+
 
 logging.basicConfig(level=logging.INFO)
 
@@ -29,22 +31,100 @@ bot = Bot(
 dp = Dispatcher()
 
 
+def clean(value) -> str:
+    return html.escape(str(value or "-"))
+
+
+def status_label(status: str) -> str:
+    return {
+        "new": "Новое",
+        "in_progress": "В работе",
+        "done": "Закрыто",
+    }.get(status, status or "-")
+
+
+def sender_label(role: str) -> str:
+    return "Вы" if role == "student" else "Учебный офис"
+
+
 def format_incoming(x: dict) -> str:
     parts = [
-        f"<b>Статус:</b> {x.get('status', '-')}",
-        f"<b>Дата:</b> {x.get('created_at', '-')}",
-        f"<b>Вопрос:</b> {x.get('text', '-')}",
+        f"<b>Тема обращения:</b> {clean(x.get('text'))}",
+        f"<b>Статус:</b> {clean(status_label(x.get('status')))}",
+        f"<b>Создано:</b> {clean(x.get('created_at'))}",
     ]
 
-    if x.get("answer"):
-        parts.append(f"<b>Ответ:</b> {x['answer']}")
+    messages = x.get("messages") or []
+    if messages:
+        parts.append("")
+        parts.append("<b>Диалог:</b>")
+        for index, message in enumerate(messages[-20:], start=max(1, len(messages) - 19)):
+            header = f"<b>{clean(sender_label(message.get('sender_role')))}</b> ({clean(message.get('created_at'))})"
+            parts.append(f"{index}. {header}")
 
-    if x.get("attachments"):
-        names = [a.get("original_name", "файл") for a in x["attachments"]]
-        if names:
-            parts.append("<b>Файлы:</b> " + ", ".join(names))
+            if message.get("text"):
+                parts.append(clean(message["text"]))
 
+            attachments = message.get("attachments") or []
+            if attachments:
+                names = ", ".join(clean(item.get("original_name", "file")) for item in attachments)
+                parts.append(f"<i>Файлы:</i> {names}")
+
+            parts.append("")
+    else:
+        parts.append(f"<b>Вопрос:</b> {clean(x.get('text'))}")
+
+    closed_at = x.get("closed_at")
+    if closed_at:
+        parts.append(f"<b>Закрыто:</b> {clean(closed_at)}")
+
+    return "\n".join(parts).strip()
+
+
+def build_dialog_draft_status(data: dict) -> str:
+    draft_text = (data.get("draft_text") or "").strip()
+    files = data.get("files", [])
+
+    parts = ["Черновик ответа обновлен."]
+    if draft_text:
+        preview = draft_text if len(draft_text) <= 500 else f"{draft_text[:500]}..."
+        parts.append("")
+        parts.append("<b>Текст:</b>")
+        parts.append(clean(preview))
+
+    parts.append("")
+    parts.append(f"<b>Файлов:</b> {len(files)}")
+    parts.append("Когда все готово, нажмите «Отправить сообщение».")
     return "\n".join(parts)
+
+
+async def cleanup_state_files(state: FSMContext):
+    data = await state.get_data()
+    for item in data.get("files", []):
+        try:
+            os.remove(item["path"])
+        except OSError:
+            pass
+
+
+async def show_incoming_list(target_message: Message, telegram_user_id: str):
+    items = await list_incoming(telegram_user_id)
+
+    if not items:
+        await target_message.answer("У тебя пока нет обращений.")
+        return
+
+    for item in items[:10]:
+        markup = incoming_actions_kb(str(item["id"]), item.get("status") == "done")
+        await target_message.answer(format_incoming(item), reply_markup=markup)
+
+
+async def append_file_to_state(state: FSMContext, file_info: dict):
+    data = await state.get_data()
+    files = data.get("files", [])
+    files.append(file_info)
+    await state.update_data(files=files)
+    return files
 
 
 @dp.message(Command("start"))
@@ -54,7 +134,7 @@ async def cmd_start(message: Message):
         "Я умею:\n"
         "• искать ответ в базе знаний\n"
         "• отправлять обращение в учебный офис\n"
-        "• показывать твои обращения\n\n"
+        "• показывать твои обращения и продолжать диалог\n\n"
         "Просто напиши свой вопрос или используй /my"
     )
     await message.answer(text, reply_markup=main_kb())
@@ -70,98 +150,170 @@ async def cmd_help(message: Message):
         "Также можно просто написать вопрос."
     )
 
-async def send_attachments_to_user(message: Message, attachments: list[dict]):
-    if not attachments:
-        return
-
-    async with httpx.AsyncClient(timeout=60) as client:
-        for a in attachments:
-            url = a.get("url")
-            name = a.get("original_name", "file")
-            mime_type = a.get("mime_type", "")
-
-            if not url:
-                continue
-
-            full_url = f"http://backend:8000{url}"
-            if os.getenv("API_BASE", "").startswith("http://localhost"):
-                full_url = f"http://localhost:8000{url}"
-
-            temp_path = None
-
-            try:
-                resp = await client.get(full_url)
-                resp.raise_for_status()
-
-                suffix = Path(name).suffix or ".bin"
-                fd, temp_path = tempfile.mkstemp(prefix="tg_out_", suffix=suffix)
-                os.close(fd)
-
-                with open(temp_path, "wb") as f:
-                    f.write(resp.content)
-
-                tg_file = FSInputFile(temp_path, filename=name)
-
-                if mime_type.startswith("image/"):
-                    await message.answer_photo(
-                        photo=tg_file,
-                        caption=name,
-                    )
-                else:
-                    await message.answer_document(
-                        document=tg_file,
-                        caption=name,
-                    )
-
-            except Exception as e:
-                # без HTML-символов из repr(e)
-                await message.answer(
-                    f"Не удалось отправить файл: {name}\n{type(e).__name__}"
-                )
-            finally:
-                if temp_path:
-                    try:
-                        os.remove(temp_path)
-                    except OSError:
-                        pass
-
-
 
 @dp.message(Command("my"))
 async def cmd_my(message: Message):
-    tg_id = str(message.from_user.id)
-    items = await list_incoming(tg_id)
-
-    if not items:
-        await message.answer("У тебя пока нет обращений.")
-        return
-
-    for x in items[:10]:
-        await message.answer(format_incoming(x))
-
-        staff_attachments = [a for a in x.get("attachments", []) if a.get("uploader_role") == "staff"]
-        if staff_attachments:
-            await message.answer("Прикреплённые файлы сотрудника:")
-            await send_attachments_to_user(message, staff_attachments)
+    await show_incoming_list(message, str(message.from_user.id))
 
 
 @dp.callback_query(F.data == "my_incoming")
 async def cb_my_incoming(callback: CallbackQuery):
-    tg_id = str(callback.from_user.id)
-    items = await list_incoming(tg_id)
+    await show_incoming_list(callback.message, str(callback.from_user.id))
+    await callback.answer()
 
-    if not items:
-        await callback.message.answer("У тебя пока нет обращений.")
+
+@dp.message(AskFlow.waiting_for_dialog_draft, F.text & ~F.text.startswith("/"))
+async def handle_dialog_text(message: Message, state: FSMContext):
+    data = await state.get_data()
+    current = (data.get("draft_text") or "").strip()
+    next_part = message.text.strip()
+    draft_text = f"{current}\n{next_part}".strip() if current else next_part
+    await state.update_data(draft_text=draft_text)
+
+    updated = await state.get_data()
+    await message.answer(build_dialog_draft_status(updated), reply_markup=dialog_draft_kb())
+
+
+@dp.message(AskFlow.waiting_for_dialog_draft, F.document)
+async def handle_dialog_document(message: Message, state: FSMContext):
+    document = message.document
+    tg_file = await bot.get_file(document.file_id)
+
+    suffix = os.path.splitext(document.file_name or "")[1]
+    fd, temp_path = tempfile.mkstemp(prefix="tgdoc_", suffix=suffix)
+    os.close(fd)
+
+    await bot.download(tg_file, destination=temp_path)
+
+    files = await append_file_to_state(
+        state,
+        {
+            "path": temp_path,
+            "filename": document.file_name or "document.bin",
+            "mime_type": document.mime_type or "application/octet-stream",
+        },
+    )
+
+    await message.answer(
+        f"Файл «{clean(document.file_name or 'document.bin')}» добавлен.\n"
+        f"Сейчас прикреплено: {len(files)}",
+        reply_markup=dialog_draft_kb(),
+    )
+
+
+@dp.message(AskFlow.waiting_for_dialog_draft, F.photo)
+async def handle_dialog_photo(message: Message, state: FSMContext):
+    photo = message.photo[-1]
+    tg_file = await bot.get_file(photo.file_id)
+
+    fd, temp_path = tempfile.mkstemp(prefix="tgphoto_", suffix=".jpg")
+    os.close(fd)
+
+    await bot.download(tg_file, destination=temp_path)
+
+    files = await append_file_to_state(
+        state,
+        {
+            "path": temp_path,
+            "filename": f"photo_{photo.file_unique_id}.jpg",
+            "mime_type": "image/jpeg",
+        },
+    )
+
+    await message.answer(
+        f"Фото добавлено.\nСейчас прикреплено: {len(files)}",
+        reply_markup=dialog_draft_kb(),
+    )
+
+
+@dp.callback_query(F.data.startswith("reply_incoming:"))
+async def cb_reply_incoming(callback: CallbackQuery, state: FSMContext):
+    incoming_id = callback.data.split(":", 1)[1]
+    items = await list_incoming(str(callback.from_user.id))
+    selected = next((item for item in items if str(item.get("id")) == incoming_id), None)
+
+    await cleanup_state_files(state)
+    await state.set_state(AskFlow.waiting_for_dialog_draft)
+    await state.set_data(
+        {
+            "draft_mode": "reply",
+            "incoming_id": incoming_id,
+            "draft_text": "",
+            "files": [],
+        }
+    )
+
+    if selected:
+        await callback.message.answer(format_incoming(selected))
+
+    await callback.message.answer(
+        "Отправь текст сообщения, фото или документы. Можно прислать несколько сообщений подряд, "
+        "я соберу их в один ответ. Когда закончишь, нажми «Отправить сообщение».",
+        reply_markup=dialog_draft_kb(),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "send_dialog_message")
+async def cb_send_dialog_message(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    incoming_id = data.get("incoming_id")
+    draft_text = (data.get("draft_text") or "").strip()
+    files = data.get("files", [])
+
+    if not incoming_id:
+        await callback.message.answer("Не удалось определить обращение для ответа.")
+        await callback.answer()
+        await state.clear()
+        return
+
+    if not draft_text and not files:
+        await callback.message.answer("Добавь текст сообщения или прикрепи хотя бы один файл.")
         await callback.answer()
         return
 
-    for x in items[:10]:
-        await callback.message.answer(format_incoming(x))
+    try:
+        row = await append_incoming_message(
+            incoming_id=incoming_id,
+            telegram_user_id=str(callback.from_user.id),
+            text=draft_text,
+            file_paths=files,
+        )
+    except Exception as exc:
+        await callback.message.answer(f"Ошибка отправки сообщения: {clean(exc)}")
+        await callback.answer()
+        return
 
-        staff_attachments = [a for a in x.get("attachments", []) if a.get("uploader_role") == "staff"]
-        if staff_attachments:
-            await callback.message.answer("Прикреплённые файлы сотрудника:")
-            await send_attachments_to_user(callback.message, staff_attachments)
+    await callback.message.answer("Сообщение отправлено в диалог.")
+    await callback.message.answer(
+        format_incoming(row),
+        reply_markup=incoming_actions_kb(str(row["id"]), row.get("status") == "done"),
+    )
+    await callback.answer()
+    await state.clear()
+
+
+@dp.callback_query(F.data == "cancel_dialog_message")
+async def cb_cancel_dialog_message(callback: CallbackQuery, state: FSMContext):
+    await cleanup_state_files(state)
+    await state.clear()
+    await callback.message.answer("Черновик ответа отменен.")
+    await callback.answer()
+
+
+@dp.callback_query(F.data.startswith("close_incoming:"))
+async def cb_close_incoming(callback: CallbackQuery):
+    incoming_id = callback.data.split(":", 1)[1]
+
+    try:
+        row = await close_incoming(incoming_id, str(callback.from_user.id))
+    except Exception as exc:
+        await callback.message.answer(f"Не удалось закрыть обращение: {clean(exc)}")
+        await callback.answer()
+        return
+
+    await callback.message.answer("Диалог закрыт. Если появятся новые вопросы, можно создать новое обращение.")
+    await callback.message.answer(format_incoming(row))
     await callback.answer()
 
 
@@ -173,8 +325,8 @@ async def handle_question(message: Message, state: FSMContext):
 
     try:
         items = await search_faq(query)
-    except Exception as e:
-        await message.answer(f"Ошибка поиска: {e}")
+    except Exception as exc:
+        await message.answer(f"Ошибка поиска: {clean(exc)}")
         return
 
     if items:
@@ -182,17 +334,17 @@ async def handle_question(message: Message, state: FSMContext):
         question = top.get("question") or "Найденный ответ"
         short_answer = top.get("short_answer") or top.get("full_answer") or "Ответ не найден"
 
-        text = f"<b>{question}</b>\n\n{short_answer}"
-        await message.answer(text)
+        await message.answer(f"<b>{clean(question)}</b>\n\n{clean(short_answer)}")
 
         if len(items) > 1:
             others = items[1:4]
-            more = ["\n<b>Похожие ответы:</b>"]
-            for x in others:
-                more.append(f"• {x.get('question', 'Без названия')}")
-            await message.answer("\n".join(more))
+            lines = ["<b>Похожие ответы:</b>"]
+            for item in others:
+                lines.append(f"• {clean(item.get('question', 'Без названия'))}")
+            await message.answer("\n".join(lines))
         return
 
+    await cleanup_state_files(state)
     await state.clear()
     await state.update_data(question_text=query, files=[])
     await state.set_state(AskFlow.waiting_for_confirm)
@@ -207,8 +359,7 @@ async def handle_question(message: Message, state: FSMContext):
 async def cb_attach_files(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AskFlow.waiting_for_files)
     await callback.message.answer(
-        "Пришли один или несколько файлов сообщениями.\n"
-        "Когда закончишь — нажми «Готово, отправить».",
+        "Пришли один или несколько файлов сообщениями. Когда закончишь, нажми «Готово, отправить».",
         reply_markup=files_ready_kb(),
     )
     await callback.answer()
@@ -216,28 +367,26 @@ async def cb_attach_files(callback: CallbackQuery, state: FSMContext):
 
 @dp.message(AskFlow.waiting_for_files, F.document)
 async def handle_document(message: Message, state: FSMContext):
-    doc = message.document
-    tg_file = await bot.get_file(doc.file_id)
+    document = message.document
+    tg_file = await bot.get_file(document.file_id)
 
-    suffix = os.path.splitext(doc.file_name or "")[1]
+    suffix = os.path.splitext(document.file_name or "")[1]
     fd, temp_path = tempfile.mkstemp(prefix="tgdoc_", suffix=suffix)
     os.close(fd)
 
     await bot.download(tg_file, destination=temp_path)
 
-    data = await state.get_data()
-    files = data.get("files", [])
-    files.append(
+    files = await append_file_to_state(
+        state,
         {
             "path": temp_path,
-            "filename": doc.file_name or "document.bin",
-            "mime_type": doc.mime_type or "application/octet-stream",
-        }
+            "filename": document.file_name or "document.bin",
+            "mime_type": document.mime_type or "application/octet-stream",
+        },
     )
-    await state.update_data(files=files)
 
     await message.answer(
-        f"Файл «{doc.file_name}» добавлен.\n"
+        f"Файл «{clean(document.file_name or 'document.bin')}» добавлен.\n"
         f"Сейчас прикреплено: {len(files)}",
         reply_markup=files_ready_kb(),
     )
@@ -253,20 +402,17 @@ async def handle_photo(message: Message, state: FSMContext):
 
     await bot.download(tg_file, destination=temp_path)
 
-    data = await state.get_data()
-    files = data.get("files", [])
-    files.append(
+    files = await append_file_to_state(
+        state,
         {
             "path": temp_path,
             "filename": f"photo_{photo.file_unique_id}.jpg",
             "mime_type": "image/jpeg",
-        }
+        },
     )
-    await state.update_data(files=files)
 
     await message.answer(
-        f"Фото добавлено.\n"
-        f"Сейчас прикреплено: {len(files)}",
+        f"Фото добавлено.\nСейчас прикреплено: {len(files)}",
         reply_markup=files_ready_kb(),
     )
 
@@ -289,16 +435,16 @@ async def cb_send_incoming(callback: CallbackQuery, state: FSMContext):
             telegram_user_id=str(callback.from_user.id),
             file_paths=files,
         )
-    except Exception as e:
-        await callback.message.answer(f"Ошибка отправки обращения: {e}")
+    except Exception as exc:
+        await callback.message.answer(f"Ошибка отправки обращения: {clean(exc)}")
         await callback.answer()
         await state.clear()
         return
 
+    await callback.message.answer("Обращение отправлено.")
     await callback.message.answer(
-        f"Обращение отправлено.\n\n"
-        f"<b>ID:</b> {row.get('id')}\n"
-        f"<b>Статус:</b> {row.get('status')}"
+        format_incoming(row),
+        reply_markup=incoming_actions_kb(str(row["id"]), row.get("status") == "done"),
     )
     await callback.answer()
     await state.clear()
@@ -306,13 +452,7 @@ async def cb_send_incoming(callback: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "cancel_incoming")
 async def cb_cancel_incoming(callback: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    for item in data.get("files", []):
-        try:
-            os.remove(item["path"])
-        except OSError:
-            pass
-
+    await cleanup_state_files(state)
     await state.clear()
     await callback.message.answer("Отправка обращения отменена.")
     await callback.answer()

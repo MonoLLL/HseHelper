@@ -4,8 +4,11 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+
 IncomingChannel = Literal["bot", "site"]
 IncomingStatus = Literal["new", "in_progress", "done"]
+IncomingSenderRole = Literal["student", "staff"]
+
 
 class FAQCreate(BaseModel):
     question: str
@@ -23,17 +26,10 @@ class FAQCreate(BaseModel):
     valid_until: Optional[datetime] = None
     status: Optional[str] = "draft"
 
+
 class FAQOut(FAQCreate):
     id: UUID
 
-
-class IncomingCreate(BaseModel):
-    text: str
-    channel: IncomingChannel
-    telegram_user_id: str | None = None
-    faculty: str | None = None
-    course: int | None = None
-    client_id: Optional[str] = None
 
 class IncomingAttachmentOut(BaseModel):
     id: str
@@ -46,6 +42,30 @@ class IncomingAttachmentOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class IncomingMessageAttachmentOut(BaseModel):
+    id: str
+    original_name: str
+    mime_type: str
+    file_size: int
+    url: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class IncomingMessageOut(BaseModel):
+    id: str
+    sender_role: IncomingSenderRole
+    text: Optional[str] = None
+    created_at: datetime
+    attachments: List[IncomingMessageAttachmentOut] = []
+
+    class Config:
+        from_attributes = True
+
 
 class IncomingOut(BaseModel):
     id: UUID
@@ -60,12 +80,10 @@ class IncomingOut(BaseModel):
     created_at: datetime
     answer: Optional[str] = None
     answered_at: Optional[datetime] = None
+    closed_at: Optional[datetime] = None
     attachments: List[IncomingAttachmentOut] = []
+    messages: List[IncomingMessageOut] = []
+
     class Config:
         from_attributes = True
-    
 
-class IncomingUpdate(BaseModel):
-    status: Optional[IncomingStatus] = None
-    comment: Optional[str] = None
-    answer: Optional[str] = None
