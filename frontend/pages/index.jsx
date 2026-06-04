@@ -311,19 +311,21 @@ export default function Home() {
                 active:scale-[0.98]
                 "
             >
-              {profile ? "Профиль" : "Регистрация"}
+              {profile ? "Профиль" : "Регистрация/Вход"}
             </Link>
-            <Link
-              href="/my"
-              className="
-                flex-1 rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-center text-sm font-semibold text-[rgb(var(--ink-700))] sm:flex-none
-                hover:border-[rgb(var(--hse-blue))] hover:bg-[rgb(var(--hse-sky))] hover:text-[rgb(var(--hse-blue))]
-                transition-colors
-                active:scale-[0.98]
-                "
-            >
-              Мои обращения
-            </Link>
+            {profile ? (
+              <Link
+                href="/my"
+                className="
+                  flex-1 rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-center text-sm font-semibold text-[rgb(var(--ink-700))] sm:flex-none
+                  hover:border-[rgb(var(--hse-blue))] hover:bg-[rgb(var(--hse-sky))] hover:text-[rgb(var(--hse-blue))]
+                  transition-colors
+                  active:scale-[0.98]
+                  "
+              >
+                Мои обращения
+              </Link>
+            ) : null}
 
             <Link
               href="/admin"

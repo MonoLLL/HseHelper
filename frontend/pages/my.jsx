@@ -381,7 +381,7 @@ export default function MyRequestsPage() {
               href="/register"
               className="flex-1 rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-center text-sm font-semibold text-[rgb(var(--ink-700))] transition-colors hover:border-[rgb(var(--hse-blue))] hover:bg-[rgb(var(--hse-sky))] hover:text-[rgb(var(--hse-blue))] sm:flex-none"
             >
-              {profile ? "Профиль" : "Регистрация"}
+              {profile ? "Профиль" : "Регистрация/Вход"}
             </Link>
             <Link
               href="/"
