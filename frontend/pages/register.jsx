@@ -257,23 +257,23 @@ export default function RegisterPage() {
   return (
     <div className="min-h-screen bg-[rgb(var(--ink-100))]">
       <header className="border-b border-[rgb(var(--ink-200))] bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-4">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6 sm:py-4">
           <div>
             <div className="text-xs text-[rgb(var(--ink-500))]">НИУ ВШЭ · учебный офис</div>
             <div className="text-base font-semibold text-[rgb(var(--ink-900))]">
               Аккаунт студента
             </div>
           </div>
-          <nav className="flex items-center gap-3">
+          <nav className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end sm:gap-3">
             <Link
               href="/"
-              className="rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-sm text-[rgb(var(--ink-700))] transition-colors hover:border-[rgb(var(--hse-blue))] hover:bg-[rgb(var(--hse-sky))] hover:text-[rgb(var(--hse-blue))]"
+              className="flex-1 rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-center text-sm text-[rgb(var(--ink-700))] transition-colors hover:border-[rgb(var(--hse-blue))] hover:bg-[rgb(var(--hse-sky))] hover:text-[rgb(var(--hse-blue))] sm:flex-none"
             >
               На главную
             </Link>
             <Link
               href="/my"
-              className="rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-sm font-semibold text-[rgb(var(--ink-700))] transition-colors hover:border-[rgb(var(--hse-blue))] hover:bg-[rgb(var(--hse-sky))] hover:text-[rgb(var(--hse-blue))]"
+              className="flex-1 rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-center text-sm font-semibold text-[rgb(var(--ink-700))] transition-colors hover:border-[rgb(var(--hse-blue))] hover:bg-[rgb(var(--hse-sky))] hover:text-[rgb(var(--hse-blue))] sm:flex-none"
             >
               Мои обращения
             </Link>
@@ -282,8 +282,8 @@ export default function RegisterPage() {
         <div className="h-1 bg-[rgb(var(--hse-sky))]" />
       </header>
 
-      <main className="mx-auto max-w-3xl px-6 py-10">
-        <Card className="p-8">
+      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-10">
+        <Card className="p-4 sm:p-8">
           {loading ? (
             <div className="text-sm text-[rgb(var(--ink-500))]">Загружаю...</div>
           ) : mode === "profile" && profile ? (
@@ -293,7 +293,7 @@ export default function RegisterPage() {
                 {profile.full_name}
               </h1>
 
-              <form onSubmit={updateGroup} className="mt-6 grid gap-5">
+              <form onSubmit={updateGroup} className="mt-6 grid gap-4 sm:gap-5">
                 <Field label="Email">
                   <input value={profile.email || ""} className={inputClass(true)} readOnly />
                 </Field>
@@ -316,18 +316,18 @@ export default function RegisterPage() {
                 {err ? <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div> : null}
                 {notice ? <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{notice}</div> : null}
 
-                <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-col-reverse gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                   <button
                     type="button"
                     onClick={logout}
-                    className="rounded-2xl border border-[rgb(var(--ink-200))] bg-white px-4 py-2 text-sm font-semibold text-[rgb(var(--ink-700))] transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+                    className="w-full rounded-2xl border border-[rgb(var(--ink-200))] bg-white px-4 py-2 text-sm font-semibold text-[rgb(var(--ink-700))] transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-700 sm:w-auto"
                   >
                     Выйти
                   </button>
                   <button
                     type="submit"
                     disabled={saving}
-                    className="rounded-2xl bg-[rgb(var(--hse-blue))] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(15,45,105,0.15)] transition-colors hover:bg-[rgb(var(--hse-blue2))] disabled:opacity-60"
+                    className="w-full rounded-2xl bg-[rgb(var(--hse-blue))] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(15,45,105,0.15)] transition-colors hover:bg-[rgb(var(--hse-blue2))] disabled:opacity-60 sm:w-auto"
                   >
                     {saving ? "Сохраняю..." : "Сохранить группу"}
                   </button>
@@ -363,11 +363,11 @@ export default function RegisterPage() {
 
                   {err ? <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div> : null}
 
-                  <div className="flex justify-end">
+                  <div className="flex justify-stretch sm:justify-end">
                     <button
                       type="submit"
                       disabled={saving}
-                      className="rounded-2xl bg-[rgb(var(--hse-blue))] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(15,45,105,0.15)] transition-colors hover:bg-[rgb(var(--hse-blue2))] disabled:opacity-60"
+                      className="w-full rounded-2xl bg-[rgb(var(--hse-blue))] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(15,45,105,0.15)] transition-colors hover:bg-[rgb(var(--hse-blue2))] disabled:opacity-60 sm:w-auto"
                     >
                       {saving ? "Вхожу..." : "Войти"}
                     </button>
@@ -440,11 +440,11 @@ export default function RegisterPage() {
 
                   {err ? <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div> : null}
 
-                  <div className="flex justify-end">
+                  <div className="flex justify-stretch sm:justify-end">
                     <button
                       type="submit"
                       disabled={saving}
-                      className="rounded-2xl bg-[rgb(var(--hse-blue))] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(15,45,105,0.15)] transition-colors hover:bg-[rgb(var(--hse-blue2))] disabled:opacity-60"
+                      className="w-full rounded-2xl bg-[rgb(var(--hse-blue))] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(15,45,105,0.15)] transition-colors hover:bg-[rgb(var(--hse-blue2))] disabled:opacity-60 sm:w-auto"
                     >
                       {saving ? "Регистрирую..." : "Зарегистрироваться"}
                     </button>

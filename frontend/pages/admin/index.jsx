@@ -137,6 +137,7 @@ function MessageBubble({ message }) {
   return (
     <div style={{ display: "flex", justifyContent: isStudent ? "flex-end" : "flex-start" }}>
       <div
+        className="admin-message"
         style={{
           maxWidth: "85%",
           borderRadius: 16,
@@ -161,6 +162,7 @@ function MessageBubble({ message }) {
                 href={`${API_BASE}${file.url}`}
                 target="_blank"
                 rel="noreferrer"
+                className="admin-file-link"
                 style={{ color: THEME.blue, textDecoration: "none", fontSize: 14 }}
               >
                 {file.original_name}
@@ -237,7 +239,7 @@ function IncomingCard({ item, token, onUpdated, onTake }) {
   }
 
   return (
-    <div style={{ padding: 16, ...CARD_STYLE }}>
+    <div className="admin-card" style={{ padding: 16, ...CARD_STYLE }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <StatusPill status={item.status} />
@@ -245,9 +247,10 @@ function IncomingCard({ item, token, onUpdated, onTake }) {
           <div style={{ fontSize: 12, color: THEME.ink500 }}>канал: {item.channel}</div>
         </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <div className="admin-actions" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {item.status === "new" ? (
             <button
+              className="mobile-full"
               onClick={() => onTake(item.id)}
               style={{
                 padding: "8px 12px",
@@ -263,6 +266,7 @@ function IncomingCard({ item, token, onUpdated, onTake }) {
             </button>
           ) : null}
           <button
+            className="mobile-full"
             onClick={() => sendMessage(false)}
             disabled={saving || (!text.trim() && files.length === 0) || item.status === "done"}
             style={{
@@ -279,6 +283,7 @@ function IncomingCard({ item, token, onUpdated, onTake }) {
             Отправить сообщение
           </button>
           <button
+            className="mobile-full"
             onClick={() => sendMessage(true)}
             disabled={saving || !text.trim() || item.status === "done"}
             style={{
@@ -521,7 +526,7 @@ export default function AdminIncomingPage() {
   if (!token) {
     return (
       <main style={{ minHeight: "100vh", background: THEME.ink100, padding: "64px 16px" }}>
-        <div style={{ maxWidth: 520, margin: "0 auto", padding: 24, ...CARD_STYLE }}>
+        <div className="admin-login-card" style={{ maxWidth: 520, margin: "0 auto", padding: 24, ...CARD_STYLE }}>
           <div style={{ fontSize: 12, color: THEME.ink500 }}>НИУ ВШЭ · учебный офис</div>
           <h1 style={{ fontSize: 28, fontWeight: 800, margin: "8px 0 0", color: THEME.ink900 }}>
             Вход в админку
@@ -560,13 +565,13 @@ export default function AdminIncomingPage() {
 
   return (
     <main style={{ minHeight: "100vh", background: THEME.ink100 }}>
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: 32 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
+      <div className="admin-shell" style={{ maxWidth: 1100, margin: "0 auto", padding: 32 }}>
+        <div className="admin-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
           <div>
             <div style={{ fontSize: 12, color: THEME.ink500 }}>НИУ ВШЭ · учебный офис</div>
             <h1 style={{ fontSize: 26, fontWeight: 800, margin: "6px 0 0", color: THEME.ink900 }}>Диалоги с обращениями</h1>
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
+          <div className="admin-actions" style={{ display: "flex", gap: 10 }}>
             <button onClick={load} style={{ padding: "10px 14px", borderRadius: 14, border: `1px solid ${THEME.ink200}`, background: THEME.white, color: THEME.ink700, fontWeight: 700, cursor: "pointer" }}>Обновить</button>
             <button onClick={() => router.push("/")} style={{ padding: "10px 14px", borderRadius: 14, border: `1px solid ${THEME.ink200}`, background: THEME.white, color: THEME.ink700, fontWeight: 700, cursor: "pointer" }}>На главную</button>
             <button onClick={() => handleLogout()} style={{ padding: "10px 14px", borderRadius: 14, border: `1px solid ${THEME.ink200}`, background: THEME.white, color: THEME.blue, fontWeight: 800, cursor: "pointer" }}>Выйти</button>

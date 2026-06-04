@@ -293,19 +293,19 @@ export default function Home() {
     <div className="min-h-screen bg-[rgb(var(--ink-100))]">
       {/* HEADER */}
       <header className="sticky top-0 z-20 border-b border-[rgb(var(--ink-200))] bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-[rgb(var(--hse-blue))] shadow-sm" />
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-6 sm:py-4">
+          <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto">
+            <div className="h-9 w-9 flex-none rounded-full bg-[rgb(var(--hse-blue))] shadow-sm sm:h-10 sm:w-10" />
             <div className="leading-tight">
               <div className="text-sm font-semibold text-[rgb(var(--ink-900))]">НИУ ВШЭ · учебный офис</div>
             </div>
           </div>
 
-          <nav className="flex items-center gap-3">
+          <nav className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end sm:gap-3">
             <Link
               href="/register"
               className="
-                rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-sm font-semibold text-[rgb(var(--ink-700))]
+                flex-1 rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-center text-sm font-semibold text-[rgb(var(--ink-700))] sm:flex-none
                 hover:border-[rgb(var(--hse-blue))] hover:bg-[rgb(var(--hse-sky))] hover:text-[rgb(var(--hse-blue))]
                 transition-colors
                 active:scale-[0.98]
@@ -316,7 +316,7 @@ export default function Home() {
             <Link
               href="/my"
               className="
-                rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-sm font-semibold text-[rgb(var(--ink-700))]
+                flex-1 rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-center text-sm font-semibold text-[rgb(var(--ink-700))] sm:flex-none
                 hover:border-[rgb(var(--hse-blue))] hover:bg-[rgb(var(--hse-sky))] hover:text-[rgb(var(--hse-blue))]
                 transition-colors
                 active:scale-[0.98]
@@ -328,7 +328,7 @@ export default function Home() {
             <Link
               href="/admin"
               className="
-                rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-sm text-[rgb(var(--ink-700))]
+                flex-1 rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-center text-sm text-[rgb(var(--ink-700))] sm:flex-none
                 hover:border-[rgb(var(--hse-blue))] hover:bg-[rgb(var(--hse-sky))] hover:text-[rgb(var(--hse-blue))]
                 transition-colors
                 focus:outline-none focus:ring-4 focus:ring-[rgb(var(--hse-sky))]
@@ -343,12 +343,12 @@ export default function Home() {
       </header>
 
       {/* MAIN */}
-      <main className="mx-auto max-w-6xl px-6 py-10">
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+        <div className="grid grid-cols-1 gap-5 sm:gap-8 lg:grid-cols-12">
           {/* LEFT */}
           <section className="lg:col-span-7 space-y-6">
             {/* HERO + SEARCH */}
-            <Card className="p-8">
+            <Card className="p-4 sm:p-8">
               <div className="mb-4 rounded-2xl border border-[rgb(var(--ink-200))] bg-white px-4 py-3">
                 {profileLoading ? (
                   <div className="text-sm text-[rgb(var(--ink-500))]">Проверяю регистрацию...</div>
@@ -389,7 +389,7 @@ export default function Home() {
                 </span>
               </div>
 
-              <h1 className="mt-3 text-3xl font-semibold text-[rgb(var(--ink-900))]">
+              <h1 className="mt-3 text-2xl font-semibold text-[rgb(var(--ink-900))] sm:text-3xl">
                 Быстрый поиск информации
               </h1>
               <p className="mt-3 text-[rgb(var(--ink-700))]">
@@ -408,7 +408,7 @@ export default function Home() {
                   Вопрос
                 </label>
 
-                <div className="mt-2 flex gap-2">
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                   <div className="relative w-full">
                     <IconSearch className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[rgb(var(--ink-500))]" />
                     <input
@@ -428,7 +428,7 @@ export default function Home() {
                   <button
                     type="submit"
                     className={clsx(
-                      "inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold text-white",
+                      "inline-flex w-full items-center justify-center gap-2 whitespace-nowrap rounded-2xl px-5 py-3 text-sm font-semibold text-white sm:w-auto sm:flex-none",
                       "bg-[rgb(var(--hse-blue))] hover:bg-[rgb(var(--hse-blue2))]",
                       "shadow-[0_10px_20px_rgba(15,45,105,0.18)] hover:shadow-[0_14px_28px_rgba(15,45,105,0.20)]",
                       "transition-all active:scale-[0.98]",
@@ -518,8 +518,8 @@ export default function Home() {
             </Card>
 
             {/* RESULT */}
-            <Card className="p-8 hover:border-[rgb(var(--hse-blue))] transition-colors">
-              <div className="flex items-start justify-between gap-4">
+            <Card className="p-4 transition-colors hover:border-[rgb(var(--hse-blue))] sm:p-8">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                 <div>
                   <div className="text-sm text-[rgb(var(--ink-500))]">Результат</div>
                   <h2 className="mt-1 text-xl font-semibold text-[rgb(var(--ink-900))]">
@@ -589,7 +589,7 @@ export default function Home() {
               ) : null}
 
               {/* SEND INCOMING */}
-              <div className="mt-7 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[rgb(var(--ink-200))] bg-white px-4 py-3">
+              <div className="mt-7 flex flex-col items-stretch gap-3 rounded-2xl border border-[rgb(var(--ink-200))] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-[rgb(var(--ink-700))]">
                   Не нашёл ответ? Отправим вопрос в учебный офис.
                 </div>
@@ -599,7 +599,7 @@ export default function Home() {
                   onClick={submitIncoming}
                   disabled={!q.trim() || loading || submitted || profileLoading}
                   className={clsx(
-                    "rounded-2xl px-4 py-2 text-sm font-semibold",
+                    "w-full rounded-2xl px-4 py-2 text-sm font-semibold sm:w-auto",
                     "transition-all active:scale-[0.98]",
                     "focus:outline-none focus:ring-4 focus:ring-[rgb(var(--hse-sky))]",
                     submitted
@@ -616,7 +616,7 @@ export default function Home() {
 
           {/* RIGHT */}
           <aside className="lg:col-span-5 space-y-6">
-            <Card className="p-8">
+            <Card className="p-4 sm:p-8">
               <div className="text-sm text-[rgb(var(--ink-500))]">Как это работает</div>
               <h3 className="mt-1 text-xl font-semibold text-[rgb(var(--ink-900))]">
                 Просто и быстро
@@ -647,7 +647,7 @@ export default function Home() {
               </div>
             </Card>
 
-            <Card className="p-8">
+            <Card className="p-4 sm:p-8">
               <div className="text-sm text-[rgb(var(--ink-500))]">Доступ</div>
               <div className="mt-2 text-sm text-[rgb(var(--ink-700))]">
                 Для сотрудников учебного офиса предусмотрена админ-панель для пополнения базы
@@ -677,7 +677,7 @@ export default function Home() {
       {/* FOOTER */}
       <footer className="mt-10 border-t border-[rgb(var(--ink-200))] bg-white">
         <div className="h-1 bg-[rgb(var(--hse-sky))]" />
-        <div className="mx-auto max-w-6xl px-6 py-8">
+        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
           <div className="text-sm text-[rgb(var(--ink-500))]">
             Учебный офис. Официальные документы и регламенты - на сайте университета.
           </div>

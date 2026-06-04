@@ -14,7 +14,125 @@
 
 html, body { height: 100%; }
 
+* {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+html {
+  overflow-x: hidden;
+}
+
 body {
   color: rgb(var(--ink-900));
   background: rgb(var(--ink-100));
+  overflow-x: hidden;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  overflow-wrap: anywhere;
+}
+
+input,
+select,
+textarea {
+  max-width: 100%;
+}
+
+a {
+  overflow-wrap: anywhere;
+}
+
+.admin-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px;
+}
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.admin-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.admin-card {
+  padding: 16px;
+}
+
+.admin-message {
+  max-width: 85%;
+  overflow-wrap: anywhere;
+}
+
+.admin-file-link {
+  overflow-wrap: anywhere;
+}
+
+.admin-login-card {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+@media (max-width: 640px) {
+  .mobile-stack {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .mobile-full {
+    width: 100% !important;
+  }
+
+  .mobile-wrap {
+    flex-wrap: wrap !important;
+  }
+
+  .mobile-center {
+    justify-content: center !important;
+  }
+
+  .admin-shell {
+    padding: 16px !important;
+  }
+
+  .admin-header {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+  }
+
+  .admin-actions,
+  .admin-actions button {
+    width: 100% !important;
+  }
+
+  .admin-card {
+    padding: 12px !important;
+    border-radius: 14px !important;
+  }
+
+  .admin-message {
+    max-width: 100% !important;
+  }
+
+  .admin-login-card {
+    max-width: none;
+    padding: 18px !important;
+  }
 }

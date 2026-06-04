@@ -124,7 +124,7 @@ function MessageBubble({ message }) {
     <div className={clsx("flex", isStudent ? "justify-end" : "justify-start")}>
       <div
         className={clsx(
-          "max-w-[85%] rounded-2xl px-4 py-3 border",
+          "max-w-full rounded-2xl border px-3 py-3 sm:max-w-[85%] sm:px-4",
           isStudent
             ? "bg-[rgb(var(--hse-sky))] border-[rgb(var(--hse-sky))]"
             : "bg-white border-[rgb(var(--ink-200))]"
@@ -224,7 +224,7 @@ function ThreadCard({ item, onUpdated }) {
   }
 
   return (
-    <Card className="p-5">
+    <Card className="p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-3">
@@ -250,7 +250,7 @@ function ThreadCard({ item, onUpdated }) {
             type="button"
             onClick={closeThread}
             disabled={saving}
-            className="rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-semibold text-green-700 transition-colors hover:bg-green-100 disabled:opacity-60"
+            className="w-full rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-semibold text-green-700 transition-colors hover:bg-green-100 disabled:opacity-60 sm:w-auto"
           >
             Информация получена
           </button>
@@ -301,12 +301,12 @@ function ThreadCard({ item, onUpdated }) {
             </div>
           ) : null}
           {err ? <div className="mt-3 text-sm text-red-700">{err}</div> : null}
-          <div className="mt-4 flex justify-end">
+          <div className="mt-4 flex justify-stretch sm:justify-end">
             <button
               type="button"
               onClick={sendMessage}
               disabled={saving || (!text.trim() && files.length === 0)}
-              className="rounded-2xl bg-[rgb(var(--hse-blue))] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[rgb(var(--hse-blue2))] disabled:opacity-60"
+              className="w-full rounded-2xl bg-[rgb(var(--hse-blue))] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[rgb(var(--hse-blue2))] disabled:opacity-60 sm:w-auto"
             >
               Отправить
             </button>
@@ -371,27 +371,27 @@ export default function MyRequestsPage() {
   return (
     <div className="min-h-screen bg-[rgb(var(--ink-100))]">
       <header className="border-b border-[rgb(var(--ink-200))] bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
           <div>
             <div className="text-xs text-[rgb(var(--ink-500))]">НИУ ВШЭ · учебный офис</div>
             <div className="text-base font-semibold text-[rgb(var(--ink-900))]">Мои обращения</div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end sm:gap-3">
             <Link
               href="/register"
-              className="rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-sm font-semibold text-[rgb(var(--ink-700))] hover:border-[rgb(var(--hse-blue))] hover:bg-[rgb(var(--hse-sky))] hover:text-[rgb(var(--hse-blue))] transition-colors"
+              className="flex-1 rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-center text-sm font-semibold text-[rgb(var(--ink-700))] transition-colors hover:border-[rgb(var(--hse-blue))] hover:bg-[rgb(var(--hse-sky))] hover:text-[rgb(var(--hse-blue))] sm:flex-none"
             >
               {profile ? "Профиль" : "Регистрация"}
             </Link>
             <Link
               href="/"
-              className="rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-sm text-[rgb(var(--ink-700))] hover:border-[rgb(var(--hse-blue))] hover:bg-[rgb(var(--hse-sky))] hover:text-[rgb(var(--hse-blue))] transition-colors"
+              className="flex-1 rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-center text-sm text-[rgb(var(--ink-700))] transition-colors hover:border-[rgb(var(--hse-blue))] hover:bg-[rgb(var(--hse-sky))] hover:text-[rgb(var(--hse-blue))] sm:flex-none"
             >
               На главную
             </Link>
             <button
               onClick={load}
-              className="rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-sm font-semibold text-[rgb(var(--ink-700))] hover:border-[rgb(var(--hse-blue))] hover:bg-[rgb(var(--hse-sky))] hover:text-[rgb(var(--hse-blue))] transition-colors"
+              className="flex-1 rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-center text-sm font-semibold text-[rgb(var(--ink-700))] transition-colors hover:border-[rgb(var(--hse-blue))] hover:bg-[rgb(var(--hse-sky))] hover:text-[rgb(var(--hse-blue))] sm:flex-none"
             >
               Обновить
             </button>
@@ -400,8 +400,8 @@ export default function MyRequestsPage() {
         <div className="h-1 bg-[rgb(var(--hse-sky))]" />
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 py-10">
-        <Card className="mb-6 p-6">
+      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+        <Card className="mb-5 p-4 sm:mb-6 sm:p-6">
           {profile ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -437,7 +437,7 @@ export default function MyRequestsPage() {
           )}
         </Card>
 
-        <Card className="p-6">
+        <Card className="p-4 sm:p-6">
           <div className="text-sm text-[rgb(var(--ink-500))]">ID профиля</div>
           <div className="mt-1 break-all font-mono text-xs text-[rgb(var(--ink-700))]">{profile?.id || "—"}</div>
         </Card>
