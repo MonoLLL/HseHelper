@@ -13,6 +13,33 @@ DEFAULT_CANDIDATE_BASES = (
 _preferred_api_base = None
 
 
+class APIStatusError(Exception):
+    def __init__(self, status_code: int, detail: str):
+        self.status_code = status_code
+        self.detail = detail
+        super().__init__(detail)
+
+
+def _response_detail(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = response.text
+
+    if isinstance(payload, dict):
+        detail = payload.get("detail") or payload
+    else:
+        detail = payload
+
+    if isinstance(detail, list):
+        return "; ".join(str(item) for item in detail)
+    if isinstance(detail, dict):
+        return str(detail)
+
+    text = str(detail or "").strip()
+    return text or f"HTTP {response.status_code}"
+
+
 def _candidate_bases() -> list[str]:
     values = []
 
@@ -51,7 +78,7 @@ async def _request(method: str, path: str, **kwargs):
             continue
         except httpx.HTTPStatusError as exc:
             _preferred_api_base = base
-            raise exc
+            raise APIStatusError(exc.response.status_code, _response_detail(exc.response)) from exc
 
     if last_error:
         raise last_error
@@ -61,6 +88,97 @@ async def _request(method: str, path: str, **kwargs):
 
 async def search_faq(query: str):
     response = await _request("GET", "/api/search", params={"q": query}, timeout=30)
+    return response.json()
+
+
+async def get_registered_user(telegram_user_id: str):
+    try:
+        response = await _request(
+            "GET",
+            f"/api/users/telegram/{telegram_user_id}",
+            timeout=30,
+        )
+    except APIStatusError as exc:
+        if exc.status_code == 404:
+            return None
+        raise
+
+    return response.json()
+
+
+async def register_user(
+    telegram_user_id: str,
+    full_name: str,
+    faculty: str | None = None,
+    course: int | None = None,
+    group_name: str | None = None,
+    telegram_username: str | None = None,
+    telegram_first_name: str | None = None,
+    telegram_last_name: str | None = None,
+):
+    data = {
+        "telegram_user_id": telegram_user_id,
+        "full_name": full_name,
+    }
+
+    optional = {
+        "faculty": faculty,
+        "course": course,
+        "group_name": group_name,
+        "telegram_username": telegram_username,
+        "telegram_first_name": telegram_first_name,
+        "telegram_last_name": telegram_last_name,
+    }
+    for key, value in optional.items():
+        if value is not None and value != "":
+            data[key] = value
+
+    response = await _request("POST", "/api/users/register", data=data, timeout=30)
+    return response.json()
+
+
+async def login_telegram_with_site_account(
+    email: str,
+    password: str,
+    telegram_user_id: str,
+    telegram_username: str | None = None,
+    telegram_first_name: str | None = None,
+    telegram_last_name: str | None = None,
+):
+    data = {
+        "email": email,
+        "password": password,
+        "telegram_user_id": telegram_user_id,
+    }
+
+    optional = {
+        "telegram_username": telegram_username,
+        "telegram_first_name": telegram_first_name,
+        "telegram_last_name": telegram_last_name,
+    }
+    for key, value in optional.items():
+        if value is not None and value != "":
+            data[key] = value
+
+    response = await _request("POST", "/api/users/telegram/login", data=data, timeout=30)
+    return response.json()
+
+
+async def set_site_credentials(
+    telegram_user_id: str,
+    email: str,
+    password: str,
+):
+    response = await _request(
+        "POST",
+        "/api/users/telegram/site-credentials",
+        data={
+            "telegram_user_id": telegram_user_id,
+            "email": email,
+            "password": password,
+        },
+        timeout=30,
+    )
     return response.json()
 
 

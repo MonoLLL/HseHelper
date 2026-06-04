@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { getClientId } from "../lib/clientId";
+import { authHeaders, clearStudentToken, getStudentToken } from "../lib/studentAuth";
 
 
 const API_BASE = process.env.NEXT_PUBLIC_API || process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
@@ -9,6 +9,42 @@ const API_BASE = process.env.NEXT_PUBLIC_API || process.env.NEXT_PUBLIC_API_BASE
 
 function clsx(...xs) {
   return xs.filter(Boolean).join(" ");
+}
+
+
+function toYekaterinburgDate(dt) {
+  if (!dt) return "";
+
+  try {
+    const raw = `${dt}`.trim().replace(/(\.\d{3})\d+/, "$1");
+    const hasTimezone = /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(raw);
+    const date = new Date(hasTimezone ? raw : `${raw}+05:00`);
+    if (Number.isNaN(date.getTime())) return null;
+
+    return date;
+  } catch {
+    return null;
+  }
+}
+
+
+function fmtYekaterinburg(dt) {
+  const date = toYekaterinburgDate(dt);
+  if (!date) return "";
+
+  return date.toLocaleString("ru-RU", { timeZone: "Asia/Yekaterinburg" });
+}
+
+
+function fmtYekaterinburgTime(dt) {
+  const date = toYekaterinburgDate(dt);
+  if (!date) return "";
+
+  return date.toLocaleTimeString("ru-RU", {
+    timeZone: "Asia/Yekaterinburg",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 
@@ -38,8 +74,8 @@ function Badge({ status }) {
 }
 
 
-async function apiGet(url) {
-  const r = await fetch(url);
+async function apiGet(url, init = {}) {
+  const r = await fetch(url, init);
   if (!r.ok) {
     const t = await r.text().catch(() => "");
     throw new Error(`${r.status} ${t}`);
@@ -48,10 +84,30 @@ async function apiGet(url) {
 }
 
 
-async function apiForm(url, formData) {
+async function apiForm(url, formData, init = {}) {
   const r = await fetch(url, {
     method: "POST",
     body: formData,
+    ...init,
+    headers: {
+      ...(init.headers || {}),
+    },
+  });
+  if (!r.ok) {
+    const t = await r.text().catch(() => "");
+    throw new Error(`${r.status} ${t}`);
+  }
+  return r.json();
+}
+
+
+async function apiPost(url, init = {}) {
+  const r = await fetch(url, {
+    method: "POST",
+    ...init,
+    headers: {
+      ...(init.headers || {}),
+    },
   });
   if (!r.ok) {
     const t = await r.text().catch(() => "");
@@ -98,7 +154,7 @@ function MessageBubble({ message }) {
           </div>
         ) : null}
         <div className="mt-2 text-[11px] text-[rgb(var(--ink-500))]">
-          {message.created_at ? new Date(message.created_at).toLocaleString() : ""}
+          {fmtYekaterinburgTime(message.created_at)}
         </div>
       </div>
     </div>
@@ -106,7 +162,7 @@ function MessageBubble({ message }) {
 }
 
 
-function ThreadCard({ item, clientId, onUpdated }) {
+function ThreadCard({ item, onUpdated }) {
   const [text, setText] = useState("");
   const [files, setFiles] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -136,11 +192,12 @@ function ThreadCard({ item, clientId, onUpdated }) {
     setSaving(true);
     try {
       const formData = new FormData();
-      formData.append("client_id", clientId);
       if (text.trim()) formData.append("text", text.trim());
       for (const file of files) formData.append("files", file);
 
-      const updated = await apiForm(`${API_BASE}/api/incoming/${item.id}/messages`, formData);
+      const updated = await apiForm(`${API_BASE}/api/incoming/${item.id}/messages`, formData, {
+        headers: authHeaders(),
+      });
       setText("");
       setFiles([]);
       onUpdated(updated);
@@ -155,9 +212,9 @@ function ThreadCard({ item, clientId, onUpdated }) {
     setErr("");
     setSaving(true);
     try {
-      const formData = new FormData();
-      formData.append("client_id", clientId);
-      const updated = await apiForm(`${API_BASE}/api/incoming/${item.id}/close`, formData);
+      const updated = await apiPost(`${API_BASE}/api/incoming/${item.id}/close`, {
+        headers: authHeaders(),
+      });
       onUpdated(updated);
     } catch (e) {
       setErr(e?.message || "Не удалось закрыть обращение");
@@ -173,7 +230,7 @@ function ThreadCard({ item, clientId, onUpdated }) {
           <div className="flex flex-wrap items-center gap-3">
             <Badge status={item.status} />
             <div className="text-xs text-[rgb(var(--ink-500))]">
-              {item.created_at ? new Date(item.created_at).toLocaleString() : ""}
+              {fmtYekaterinburg(item.created_at)}
             </div>
             <div className="text-xs text-[rgb(var(--ink-500))]">
               Сообщений: {(item.messages || []).length}
@@ -266,7 +323,7 @@ function ThreadCard({ item, clientId, onUpdated }) {
 
 
 export default function MyRequestsPage() {
-  const [clientId, setClientId] = useState("");
+  const [profile, setProfile] = useState(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -275,11 +332,26 @@ export default function MyRequestsPage() {
     setErr("");
     setLoading(true);
     try {
-      const cid = getClientId();
-      setClientId(cid);
-      const data = await apiGet(`${API_BASE}/api/incoming?client_id=${encodeURIComponent(cid)}`);
+      const token = getStudentToken();
+      if (!token) {
+        setProfile(null);
+        setItems([]);
+        return;
+      }
+
+      const [profileData, data] = await Promise.all([
+        apiGet(`${API_BASE}/api/users/site/me`, { headers: authHeaders(token) }),
+        apiGet(`${API_BASE}/api/incoming`, { headers: authHeaders(token) }),
+      ]);
+      setProfile(profileData);
       setItems(Array.isArray(data) ? data : []);
     } catch (e) {
+      if (`${e?.message || ""}`.startsWith("401")) {
+        clearStudentToken();
+        setProfile(null);
+        setItems([]);
+        return;
+      }
       setErr(e?.message || "Не удалось загрузить обращения");
     } finally {
       setLoading(false);
@@ -306,6 +378,12 @@ export default function MyRequestsPage() {
           </div>
           <div className="flex items-center gap-3">
             <Link
+              href="/register"
+              className="rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-sm font-semibold text-[rgb(var(--ink-700))] hover:border-[rgb(var(--hse-blue))] hover:bg-[rgb(var(--hse-sky))] hover:text-[rgb(var(--hse-blue))] transition-colors"
+            >
+              {profile ? "Профиль" : "Регистрация"}
+            </Link>
+            <Link
               href="/"
               className="rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-sm text-[rgb(var(--ink-700))] hover:border-[rgb(var(--hse-blue))] hover:bg-[rgb(var(--hse-sky))] hover:text-[rgb(var(--hse-blue))] transition-colors"
             >
@@ -323,9 +401,45 @@ export default function MyRequestsPage() {
       </header>
 
       <main className="mx-auto max-w-6xl px-6 py-10">
+        <Card className="mb-6 p-6">
+          {profile ? (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-sm text-[rgb(var(--ink-500))]">Профиль студента</div>
+                <div className="mt-1 text-base font-semibold text-[rgb(var(--ink-900))]">
+                  {profile.full_name}
+                </div>
+                <div className="mt-1 text-sm text-[rgb(var(--ink-700))]">
+                  {[profile.faculty, profile.course ? `${profile.course} курс` : "", profile.group_name]
+                    .filter(Boolean)
+                    .join(" · ") || "Дополнительные данные не указаны"}
+                </div>
+              </div>
+              <Link
+                href="/register"
+                className="rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-sm font-semibold text-[rgb(var(--hse-blue))] transition-colors hover:bg-[rgb(var(--hse-sky))]"
+              >
+                Изменить
+              </Link>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="text-sm text-[rgb(var(--ink-700))]">
+                Зарегистрируйтесь, чтобы учебный офис видел ваши данные в новых обращениях.
+              </div>
+              <Link
+                href="/register"
+                className="rounded-full bg-[rgb(var(--hse-blue))] px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-[rgb(var(--hse-blue2))]"
+              >
+                Зарегистрироваться
+              </Link>
+            </div>
+          )}
+        </Card>
+
         <Card className="p-6">
-          <div className="text-sm text-[rgb(var(--ink-500))]">Ваш идентификатор для сайта</div>
-          <div className="mt-1 break-all font-mono text-xs text-[rgb(var(--ink-700))]">{clientId || "—"}</div>
+          <div className="text-sm text-[rgb(var(--ink-500))]">ID профиля</div>
+          <div className="mt-1 break-all font-mono text-xs text-[rgb(var(--ink-700))]">{profile?.id || "—"}</div>
         </Card>
 
         <div className="mt-6">
@@ -339,7 +453,7 @@ export default function MyRequestsPage() {
           ) : (
             <div className="mt-6 grid gap-4">
               {items.map((item) => (
-                <ThreadCard key={item.id} item={item} clientId={clientId} onUpdated={replaceItem} />
+                <ThreadCard key={item.id} item={item} onUpdated={replaceItem} />
               ))}
             </div>
           )}

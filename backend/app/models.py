@@ -1,12 +1,12 @@
 import uuid
-from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Integer, String, Text, or_
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import foreign, relationship
 from sqlalchemy.sql import func
 
 from .db import Base
+from .time_utils import now_yekaterinburg
 
 
 class Category(Base):
@@ -35,6 +35,25 @@ class FAQ(Base):
     status = Column(String(32), default="published")
     valid_from = Column(DateTime, nullable=True)
     valid_until = Column(DateTime, nullable=True)
+    attachments = relationship(
+        "FAQAttachment",
+        backref="faq",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by=lambda: FAQAttachment.created_at.asc(),
+    )
+
+
+class FAQAttachment(Base):
+    __tablename__ = "faq_attachments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    faq_id = Column(UUID(as_uuid=True), ForeignKey("faq_entries.id", ondelete="CASCADE"), nullable=False)
+    original_name = Column(String(255), nullable=False)
+    stored_path = Column(String(512), nullable=False)
+    mime_type = Column(String(128), nullable=False)
+    file_size = Column(BigInteger, nullable=False)
+    created_at = Column(DateTime, default=now_yekaterinburg, nullable=False, server_default=func.now())
 
 
 class Event(Base):
@@ -62,12 +81,32 @@ class AdminUser(Base):
     is_active = Column(Boolean, default=True)
 
 
+class StudentUser(Base):
+    __tablename__ = "student_users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(String(64), unique=True, nullable=True, index=True)
+    email = Column(String(255), unique=True, nullable=True, index=True)
+    password_hash = Column(String(255), nullable=True)
+    telegram_user_id = Column(String(64), unique=True, nullable=True, index=True)
+    telegram_username = Column(String(128), nullable=True)
+    telegram_first_name = Column(String(128), nullable=True)
+    telegram_last_name = Column(String(128), nullable=True)
+    full_name = Column(String(255), nullable=False)
+    faculty = Column(String(128), nullable=True)
+    course = Column(Integer, nullable=True)
+    group_name = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=now_yekaterinburg, nullable=False)
+    updated_at = Column(DateTime, default=now_yekaterinburg, onupdate=now_yekaterinburg, nullable=False)
+
+
 class IncomingQuestion(Base):
     __tablename__ = "incoming_questions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     text = Column(Text, nullable=False)
     channel = Column(String(16), nullable=False)  # bot | site
+    student_user_id = Column(UUID(as_uuid=True), ForeignKey("student_users.id"), nullable=True, index=True)
     client_id = Column(String(64), nullable=True, index=True)
     telegram_user_id = Column(String(64), nullable=True)
     faculty = Column(String(64), nullable=True)
@@ -76,8 +115,18 @@ class IncomingQuestion(Base):
     comment = Column(Text, nullable=True)
     answer = Column(Text, nullable=True)
     answered_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_yekaterinburg, nullable=False)
 
+    student_user = relationship(
+        "StudentUser",
+        primaryjoin=lambda: or_(
+            foreign(IncomingQuestion.student_user_id) == StudentUser.id,
+            foreign(IncomingQuestion.telegram_user_id) == StudentUser.telegram_user_id,
+            foreign(IncomingQuestion.client_id) == StudentUser.client_id,
+        ),
+        uselist=False,
+        viewonly=True,
+    )
     attachments = relationship(
         "IncomingQuestionAttachment",
         backref="question",
@@ -104,7 +153,7 @@ class IncomingQuestionAttachment(Base):
     stored_path = Column(String(512), nullable=False)
     mime_type = Column(String(128), nullable=False)
     file_size = Column(BigInteger, nullable=False)
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    created_at = Column(DateTime, default=now_yekaterinburg, nullable=False, server_default=func.now())
 
 
 class IncomingMessage(Base):
@@ -114,7 +163,7 @@ class IncomingMessage(Base):
     question_id = Column(UUID(as_uuid=True), ForeignKey("incoming_questions.id", ondelete="CASCADE"), nullable=False)
     sender_role = Column(String(16), nullable=False)  # student / staff
     text = Column(Text, nullable=True)
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    created_at = Column(DateTime, default=now_yekaterinburg, nullable=False, server_default=func.now())
 
     attachments = relationship(
         "IncomingMessageAttachment",
@@ -134,4 +183,4 @@ class IncomingMessageAttachment(Base):
     stored_path = Column(String(512), nullable=False)
     mime_type = Column(String(128), nullable=False)
     file_size = Column(BigInteger, nullable=False)
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    created_at = Column(DateTime, default=now_yekaterinburg, nullable=False, server_default=func.now())

@@ -1,17 +1,18 @@
-from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from sqlalchemy import text
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from ..auth import create_token, decode_token, verify_password
 from ..db import get_db
-from ..models import AdminUser, FAQ, IncomingQuestion
+from ..faq_utils import faq_index_doc, faq_to_out
+from ..models import AdminUser, FAQ, FAQAttachment, IncomingQuestion
 from ..schemas import FAQCreate, FAQOut, IncomingStatus
 from ..search_service import index_faq
 from ..telegram_notify import send_staff_attachments, send_telegram_message
+from ..time_utils import now_yekaterinburg
 from .incoming import create_message, incoming_query, incoming_to_out
 
 
@@ -55,21 +56,8 @@ def create_faq(payload: FAQCreate, db: Session = Depends(get_db), _=Depends(requ
     db.add(row)
     db.commit()
     db.refresh(row)
-    index_faq(
-        {
-            "id": str(row.id),
-            "question": row.question,
-            "short_answer": row.short_answer,
-            "full_answer": row.full_answer,
-            "tags": row.tags or [],
-            "synonyms": row.synonyms or [],
-            "faculty_ids": row.faculty_ids or [],
-            "program_ids": row.program_ids or [],
-            "category_id": str(row.category_id) if row.category_id else None,
-            "status": row.status,
-        }
-    )
-    return FAQOut(**payload.model_dump(), id=row.id)
+    index_faq(faq_index_doc(row))
+    return faq_to_out(row)
 
 
 @router.put("/faq/{faq_id}", response_model=FAQOut)
@@ -83,21 +71,8 @@ def update_faq(faq_id: UUID, payload: FAQCreate, db: Session = Depends(get_db), 
 
     db.commit()
     db.refresh(row)
-    index_faq(
-        {
-            "id": str(row.id),
-            "question": row.question,
-            "short_answer": row.short_answer,
-            "full_answer": row.full_answer,
-            "tags": row.tags or [],
-            "synonyms": row.synonyms or [],
-            "faculty_ids": row.faculty_ids or [],
-            "program_ids": row.program_ids or [],
-            "category_id": str(row.category_id) if row.category_id else None,
-            "status": row.status,
-        }
-    )
-    return FAQOut(**payload.model_dump(), id=row.id)
+    index_faq(faq_index_doc(row))
+    return faq_to_out(row)
 
 
 @router.post("/faq/{faq_id}/publish")
@@ -108,20 +83,7 @@ def publish_faq(faq_id: UUID, db: Session = Depends(get_db), _=Depends(require_a
     row.status = "published"
     db.commit()
     db.refresh(row)
-    index_faq(
-        {
-            "id": str(row.id),
-            "question": row.question,
-            "short_answer": row.short_answer,
-            "full_answer": row.full_answer,
-            "tags": row.tags or [],
-            "synonyms": row.synonyms or [],
-            "faculty_ids": row.faculty_ids or [],
-            "program_ids": row.program_ids or [],
-            "category_id": str(row.category_id) if row.category_id else None,
-            "status": row.status,
-        }
-    )
+    index_faq(faq_index_doc(row))
     return {"ok": True}
 
 
@@ -161,7 +123,7 @@ async def update_incoming(
     item.status = status
     item.comment = comment
     item.answer = answer
-    item.answered_at = datetime.utcnow() if item.status == "done" else None
+    item.answered_at = now_yekaterinburg() if item.status == "done" else None
 
     try:
         if answer or files:
@@ -201,6 +163,7 @@ async def admin_send_message(
 
     try:
         message = create_message(db, item, "staff", text, files)
+        db.flush()
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -218,20 +181,18 @@ async def admin_send_message(
         )
         db.add(faq_row)
         db.flush()
-        index_faq(
-            {
-                "id": str(faq_row.id),
-                "question": faq_row.question,
-                "short_answer": faq_row.short_answer,
-                "full_answer": faq_row.full_answer,
-                "tags": [],
-                "synonyms": [],
-                "faculty_ids": [],
-                "program_ids": [],
-                "category_id": None,
-                "status": faq_row.status,
-            }
-        )
+        for attachment in message.attachments:
+            db.add(
+                FAQAttachment(
+                    faq_id=faq_row.id,
+                    original_name=attachment.original_name,
+                    stored_path=attachment.stored_path,
+                    mime_type=attachment.mime_type,
+                    file_size=attachment.file_size,
+                    created_at=attachment.created_at,
+                )
+            )
+        index_faq(faq_index_doc(faq_row))
 
     db.commit()
     item = incoming_query(db).filter(IncomingQuestion.id == incoming_id).first()
@@ -254,26 +215,5 @@ def list_faq(
     db: Session = Depends(get_db),
     _=Depends(require_admin),
 ):
-    rows = db.query(FAQ).order_by(FAQ.question.asc()).all()
-    out = []
-    for row in rows:
-        out.append(
-            {
-                "id": row.id,
-                "question": row.question,
-                "short_answer": row.short_answer,
-                "full_answer": row.full_answer,
-                "category_id": row.category_id,
-                "tags": row.tags or [],
-                "synonyms": row.synonyms or [],
-                "faculty_ids": row.faculty_ids or [],
-                "program_ids": row.program_ids or [],
-                "course_min": row.course_min,
-                "course_max": row.course_max,
-                "source_url": row.source_url,
-                "status": row.status,
-                "valid_from": row.valid_from,
-                "valid_until": row.valid_until,
-            }
-        )
-    return out
+    rows = db.query(FAQ).options(joinedload(FAQ.attachments)).order_by(FAQ.question.asc()).all()
+    return [faq_to_out(row) for row in rows]

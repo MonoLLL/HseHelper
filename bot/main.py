@@ -14,12 +14,23 @@ from api import (
     append_incoming_message,
     close_incoming,
     create_incoming,
+    get_registered_user,
     list_incoming,
+    login_telegram_with_site_account,
+    register_user as api_register_user,
     search_faq,
+    set_site_credentials,
 )
 from config import BOT_TOKEN
-from keyboards import dialog_draft_kb, faq_not_found_kb, files_ready_kb, incoming_actions_kb, main_kb
-from states import AskFlow
+from keyboards import (
+    dialog_draft_kb,
+    faq_not_found_kb,
+    files_ready_kb,
+    incoming_actions_kb,
+    main_kb,
+    registration_cancel_kb,
+)
+from states import AskFlow, RegistrationFlow, SiteAccessFlow, SiteLoginFlow
 
 
 logging.basicConfig(level=logging.INFO)
@@ -127,8 +138,94 @@ async def append_file_to_state(state: FSMContext, file_info: dict):
     return files
 
 
+def format_profile(user: dict) -> str:
+    parts = [
+        "<b>Твои данные:</b>",
+        f"ФИО: {clean(user.get('full_name'))}",
+        f"Факультет: {clean(user.get('faculty'))}",
+        f"Курс: {clean(user.get('course'))}",
+        f"Группа: {clean(user.get('group_name'))}",
+    ]
+    if user.get("email"):
+        parts.append(f"Email: {clean(user.get('email'))}")
+    return "\n".join(parts)
+
+
+def user_has_site_credentials(user: dict | None) -> bool:
+    return bool(user and user.get("email"))
+
+
+def main_keyboard_for(user: dict | None):
+    return main_kb(user is not None, user_has_site_credentials(user))
+
+
+async def load_registered_user(telegram_user_id: str):
+    try:
+        return await get_registered_user(telegram_user_id)
+    except Exception:
+        logging.exception("Failed to load registered user")
+        return None
+
+
+async def ask_registration(target_message: Message):
+    await target_message.answer(
+        "Чтобы отправлять обращения в учебный офис, сначала зарегистрируйся. "
+        "Это займет меньше минуты.",
+        reply_markup=main_keyboard_for(None),
+    )
+
+
+async def start_registration(message: Message, state: FSMContext):
+    await cleanup_state_files(state)
+    await state.clear()
+
+    user = await load_registered_user(str(message.from_user.id))
+    if user and user_has_site_credentials(user):
+        await message.answer(
+            "Этот Telegram уже привязан к аккаунту сайта. В боте можно использовать только этот профиль.",
+            reply_markup=main_keyboard_for(user),
+        )
+        return
+
+    await state.set_state(RegistrationFlow.waiting_for_full_name)
+    await message.answer(
+        "Начнем регистрацию.\n\nВведи ФИО полностью, например: Иванов Иван Иванович.",
+        reply_markup=registration_cancel_kb(),
+    )
+
+
+async def start_site_login(message: Message, state: FSMContext):
+    await cleanup_state_files(state)
+    await state.clear()
+    await state.set_state(SiteLoginFlow.waiting_for_email)
+    await message.answer(
+        "Введи email и пароль от аккаунта на сайте. После входа я привяжу этот Telegram к твоему профилю.\n\nСначала отправь email.",
+        reply_markup=registration_cancel_kb(),
+    )
+
+
+async def start_site_access(message: Message, state: FSMContext):
+    user = await load_registered_user(str(message.from_user.id))
+    if not user:
+        await message.answer("Сначала зарегистрируйся в боте или войди через аккаунт сайта командой /login.")
+        return
+
+    await cleanup_state_files(state)
+    await state.clear()
+    await state.set_state(SiteAccessFlow.waiting_for_email)
+    await message.answer(
+        "Сделаем доступ к сайту для твоего Telegram-профиля.\n\nОтправь email, который будешь использовать для входа на сайт.",
+        reply_markup=registration_cancel_kb(),
+    )
+
+
 @dp.message(Command("start"))
-async def cmd_start(message: Message):
+async def cmd_start(message: Message, state: FSMContext):
+    await cleanup_state_files(state)
+    await state.clear()
+
+    user = await load_registered_user(str(message.from_user.id))
+
     text = (
         "Привет! Я бот учебного офиса.\n\n"
         "Я умею:\n"
@@ -137,7 +234,12 @@ async def cmd_start(message: Message):
         "• показывать твои обращения и продолжать диалог\n\n"
         "Просто напиши свой вопрос или используй /my"
     )
-    await message.answer(text, reply_markup=main_kb())
+    if user:
+        text = f"Привет, {clean(user.get('full_name'))}!\n\n" + text
+    else:
+        text += "\n\nДля отправки обращений понадобится регистрация."
+
+    await message.answer(text, reply_markup=main_keyboard_for(user))
 
 
 @dp.message(Command("help"))
@@ -145,21 +247,274 @@ async def cmd_help(message: Message):
     await message.answer(
         "Команды:\n"
         "/start — начать работу\n"
+        "/register — регистрация или обновление данных\n"
+        "/login — войти в боте через аккаунт сайта\n"
+        "/site — сделать вход на сайт для профиля из бота\n"
+        "/profile — мои данные\n"
+        "/cancel — отменить текущее действие\n"
         "/help — помощь\n"
         "/my — мои обращения\n\n"
         "Также можно просто написать вопрос."
     )
 
 
+@dp.message(Command("cancel"))
+async def cmd_cancel(message: Message, state: FSMContext):
+    await cleanup_state_files(state)
+    await state.clear()
+    user = await load_registered_user(str(message.from_user.id))
+    await message.answer("Действие отменено.", reply_markup=main_keyboard_for(user))
+
+
+@dp.message(Command("register"))
+async def cmd_register(message: Message, state: FSMContext):
+    await start_registration(message, state)
+
+
+@dp.message(Command("login"))
+async def cmd_login(message: Message, state: FSMContext):
+    await start_site_login(message, state)
+
+
+@dp.message(Command("site"))
+async def cmd_site(message: Message, state: FSMContext):
+    await start_site_access(message, state)
+
+
+@dp.message(Command("profile"))
+async def cmd_profile(message: Message):
+    user = await load_registered_user(str(message.from_user.id))
+    if not user:
+        await ask_registration(message)
+        return
+
+    await message.answer(format_profile(user), reply_markup=main_keyboard_for(user))
+
+
 @dp.message(Command("my"))
 async def cmd_my(message: Message):
+    user = await load_registered_user(str(message.from_user.id))
+    if not user:
+        await ask_registration(message)
+        return
     await show_incoming_list(message, str(message.from_user.id))
+
+
+@dp.callback_query(F.data == "register_user")
+async def cb_register_user(callback: CallbackQuery, state: FSMContext):
+    await start_registration(callback.message, state)
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "site_login")
+async def cb_site_login(callback: CallbackQuery, state: FSMContext):
+    await start_site_login(callback.message, state)
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "site_access")
+async def cb_site_access(callback: CallbackQuery, state: FSMContext):
+    await start_site_access(callback.message, state)
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "profile")
+async def cb_profile(callback: CallbackQuery):
+    user = await load_registered_user(str(callback.from_user.id))
+    if not user:
+        await ask_registration(callback.message)
+        await callback.answer()
+        return
+
+    await callback.message.answer(format_profile(user), reply_markup=main_keyboard_for(user))
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "cancel_registration")
+async def cb_cancel_registration(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    user = await load_registered_user(str(callback.from_user.id))
+    await callback.message.answer("Действие отменено.", reply_markup=main_keyboard_for(user))
+    await callback.answer()
 
 
 @dp.callback_query(F.data == "my_incoming")
 async def cb_my_incoming(callback: CallbackQuery):
+    user = await load_registered_user(str(callback.from_user.id))
+    if not user:
+        await ask_registration(callback.message)
+        await callback.answer()
+        return
     await show_incoming_list(callback.message, str(callback.from_user.id))
     await callback.answer()
+
+
+@dp.message(SiteLoginFlow.waiting_for_email, F.text & ~F.text.startswith("/"))
+async def handle_site_login_email(message: Message, state: FSMContext):
+    await state.update_data(email=message.text.strip())
+    await state.set_state(SiteLoginFlow.waiting_for_password)
+    await message.answer("Теперь отправь пароль от сайта.")
+
+
+@dp.message(SiteLoginFlow.waiting_for_password, F.text & ~F.text.startswith("/"))
+async def handle_site_login_password(message: Message, state: FSMContext):
+    data = await state.get_data()
+    password = message.text.strip()
+
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    try:
+        user = await login_telegram_with_site_account(
+            email=data.get("email", ""),
+            password=password,
+            telegram_user_id=str(message.from_user.id),
+            telegram_username=message.from_user.username,
+            telegram_first_name=message.from_user.first_name,
+            telegram_last_name=message.from_user.last_name,
+        )
+    except Exception as exc:
+        logging.exception("Failed to login Telegram user with site account")
+        await message.answer(f"Не удалось войти через сайт: {clean(exc)}", reply_markup=main_keyboard_for(None))
+        await state.clear()
+        return
+
+    await state.clear()
+    await message.answer("Готово, Telegram привязан к аккаунту сайта.")
+    await message.answer(format_profile(user), reply_markup=main_keyboard_for(user))
+
+
+@dp.message(SiteAccessFlow.waiting_for_email, F.text & ~F.text.startswith("/"))
+async def handle_site_access_email(message: Message, state: FSMContext):
+    await state.update_data(email=message.text.strip())
+    await state.set_state(SiteAccessFlow.waiting_for_password)
+    await message.answer("Теперь придумай пароль для входа на сайт. Минимум 8 символов.")
+
+
+@dp.message(SiteAccessFlow.waiting_for_password, F.text & ~F.text.startswith("/"))
+async def handle_site_access_password(message: Message, state: FSMContext):
+    data = await state.get_data()
+    password = message.text.strip()
+
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    try:
+        user = await set_site_credentials(
+            telegram_user_id=str(message.from_user.id),
+            email=data.get("email", ""),
+            password=password,
+        )
+    except Exception as exc:
+        logging.exception("Failed to set site credentials for Telegram user")
+        current_user = await load_registered_user(str(message.from_user.id))
+        await message.answer(
+            f"Не удалось сохранить доступ к сайту: {clean(exc)}",
+            reply_markup=main_keyboard_for(current_user),
+        )
+        await state.clear()
+        return
+
+    await state.clear()
+    await message.answer("Готово. Теперь можно входить на сайт с этим email и паролем.")
+    await message.answer(format_profile(user), reply_markup=main_keyboard_for(user))
+
+
+@dp.message(RegistrationFlow.waiting_for_full_name, F.text & ~F.text.startswith("/"))
+async def handle_registration_full_name(message: Message, state: FSMContext):
+    full_name = message.text.strip()
+    if len(full_name) < 3:
+        await message.answer("ФИО выглядит слишком коротким. Введи ФИО полностью.")
+        return
+
+    await state.update_data(full_name=full_name)
+    await state.set_state(RegistrationFlow.waiting_for_faculty)
+    await message.answer(
+        "Укажи факультет или образовательную программу. Если не хочешь указывать, отправь «-».",
+        reply_markup=registration_cancel_kb(),
+    )
+
+
+@dp.message(RegistrationFlow.waiting_for_faculty, F.text & ~F.text.startswith("/"))
+async def handle_registration_faculty(message: Message, state: FSMContext):
+    faculty = message.text.strip()
+    if faculty in {"-", "—"}:
+        faculty = ""
+
+    await state.update_data(faculty=faculty)
+    await state.set_state(RegistrationFlow.waiting_for_course)
+    await message.answer(
+        "Укажи курс цифрой от 1 до 10. Если не хочешь указывать, отправь «-».",
+        reply_markup=registration_cancel_kb(),
+    )
+
+
+@dp.message(RegistrationFlow.waiting_for_course, F.text & ~F.text.startswith("/"))
+async def handle_registration_course(message: Message, state: FSMContext):
+    raw_course = message.text.strip()
+    course = None
+
+    if raw_course not in {"-", "—"}:
+        try:
+            course = int(raw_course)
+        except ValueError:
+            await message.answer("Курс нужно указать числом, например 2. Можно отправить «-», чтобы пропустить.")
+            return
+
+        if not 1 <= course <= 10:
+            await message.answer("Курс должен быть от 1 до 10. Можно отправить «-», чтобы пропустить.")
+            return
+
+    await state.update_data(course=course)
+    await state.set_state(RegistrationFlow.waiting_for_group)
+    await message.answer(
+        "Укажи группу, например БПИ221. Если не хочешь указывать, отправь «-».",
+        reply_markup=registration_cancel_kb(),
+    )
+
+
+@dp.message(RegistrationFlow.waiting_for_group, F.text & ~F.text.startswith("/"))
+async def handle_registration_group(message: Message, state: FSMContext):
+    raw_group = message.text.strip()
+    group_name = "" if raw_group in {"-", "—"} else raw_group
+    data = await state.get_data()
+
+    try:
+        user = await api_register_user(
+            telegram_user_id=str(message.from_user.id),
+            full_name=data["full_name"],
+            faculty=data.get("faculty") or None,
+            course=data.get("course"),
+            group_name=group_name or None,
+            telegram_username=message.from_user.username,
+            telegram_first_name=message.from_user.first_name,
+            telegram_last_name=message.from_user.last_name,
+        )
+    except Exception as exc:
+        logging.exception("Failed to register user")
+        await state.clear()
+        current_user = await load_registered_user(str(message.from_user.id))
+        if "Telegram is already linked to a site account" in str(exc):
+            await message.answer(
+                "Этот Telegram уже привязан к аккаунту сайта, поэтому я не буду перезаписывать его ФИО, курс и группу.\n\n"
+                "В боте можно использовать только профиль, который уже привязан к этому Telegram.",
+                reply_markup=main_keyboard_for(current_user),
+            )
+            return
+
+        await message.answer(
+            f"Не удалось сохранить регистрацию: {clean(exc)}",
+            reply_markup=main_keyboard_for(current_user),
+        )
+        return
+
+    await state.clear()
+    await message.answer("Готово, регистрация сохранена.")
+    await message.answer(format_profile(user), reply_markup=main_keyboard_for(user))
 
 
 @dp.message(AskFlow.waiting_for_dialog_draft, F.text & ~F.text.startswith("/"))
@@ -344,6 +699,12 @@ async def handle_question(message: Message, state: FSMContext):
             await message.answer("\n".join(lines))
         return
 
+    user = await load_registered_user(str(message.from_user.id))
+    if not user:
+        await message.answer("Точного ответа не найдено.")
+        await ask_registration(message)
+        return
+
     await cleanup_state_files(state)
     await state.clear()
     await state.update_data(question_text=query, files=[])
@@ -427,6 +788,12 @@ async def cb_send_incoming(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer("Не удалось получить текст вопроса.")
         await callback.answer()
         await state.clear()
+        return
+
+    user = await load_registered_user(str(callback.from_user.id))
+    if not user:
+        await ask_registration(callback.message)
+        await callback.answer()
         return
 
     try:

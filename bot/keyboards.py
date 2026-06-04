@@ -78,14 +78,76 @@ def incoming_actions_kb(incoming_id: str, is_closed: bool = False):
     return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
 
 
-def main_kb():
+def registration_cancel_kb():
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Отмена",
+                    callback_data="cancel_registration",
+                ),
+            ]
+        ]
+    )
+
+
+def main_kb(is_registered: bool = False, has_site_credentials: bool = False):
+    rows = []
+
+    if is_registered:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="Мои обращения",
+                    callback_data="my_incoming",
+                ),
+                InlineKeyboardButton(
+                    text="Мои данные",
+                    callback_data="profile",
+                ),
+            ]
+        )
+        if not has_site_credentials:
+            rows.append(
+                [
+                    InlineKeyboardButton(
+                        text="Обновить регистрацию",
+                        callback_data="register_user",
+                    ),
+                ]
+            )
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="Обновить доступ к сайту" if has_site_credentials else "Доступ к сайту",
+                    callback_data="site_access",
+                ),
+            ]
+        )
+    else:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="Зарегистрироваться в боте",
+                    callback_data="register_user",
+                ),
+            ]
+        )
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="Войти через сайт",
+                    callback_data="site_login",
+                ),
+            ]
+        )
+        rows.append(
             [
                 InlineKeyboardButton(
                     text="Мои обращения",
                     callback_data="my_incoming",
                 ),
             ]
-        ]
-    )
+        )
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)

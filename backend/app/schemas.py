@@ -27,8 +27,40 @@ class FAQCreate(BaseModel):
     status: Optional[str] = "draft"
 
 
+class FAQAttachmentOut(BaseModel):
+    id: str
+    original_name: str
+    mime_type: str
+    file_size: int
+    url: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class FAQOut(FAQCreate):
     id: UUID
+    attachments: List[FAQAttachmentOut] = []
+
+
+class StudentUserOut(BaseModel):
+    id: UUID
+    client_id: Optional[str] = None
+    email: Optional[str] = None
+    telegram_user_id: Optional[str] = None
+    telegram_username: Optional[str] = None
+    telegram_first_name: Optional[str] = None
+    telegram_last_name: Optional[str] = None
+    full_name: str
+    faculty: Optional[str] = None
+    course: Optional[int] = None
+    group_name: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 class IncomingAttachmentOut(BaseModel):
@@ -73,6 +105,7 @@ class IncomingOut(BaseModel):
     channel: str
     client_id: Optional[str] = None
     telegram_user_id: str | None
+    student_user: Optional[StudentUserOut] = None
     faculty: str | None
     course: int | None
     status: str
@@ -86,4 +119,3 @@ class IncomingOut(BaseModel):
 
     class Config:
         from_attributes = True
-

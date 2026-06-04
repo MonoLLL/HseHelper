@@ -1,9 +1,9 @@
-from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session, joinedload
 
 from ..db import get_db
@@ -13,8 +13,11 @@ from ..models import (
     IncomingMessageAttachment,
     IncomingQuestion,
     IncomingQuestionAttachment,
+    StudentUser,
 )
 from ..schemas import IncomingChannel, IncomingOut
+from ..time_utils import now_yekaterinburg
+from .users import get_student_from_authorization
 
 
 router = APIRouter()
@@ -97,6 +100,7 @@ def incoming_to_out(row: IncomingQuestion):
         "channel": row.channel,
         "client_id": row.client_id,
         "telegram_user_id": row.telegram_user_id,
+        "student_user": row.student_user,
         "faculty": row.faculty,
         "course": row.course,
         "status": row.status,
@@ -112,9 +116,29 @@ def incoming_to_out(row: IncomingQuestion):
 
 def incoming_query(db: Session):
     return db.query(IncomingQuestion).options(
+        joinedload(IncomingQuestion.student_user),
         joinedload(IncomingQuestion.attachments),
         joinedload(IncomingQuestion.messages).joinedload(IncomingMessage.attachments),
     )
+
+
+def get_student_by_telegram(db: Session, telegram_user_id: str | None) -> StudentUser | None:
+    if not telegram_user_id:
+        return None
+    return db.query(StudentUser).filter(StudentUser.telegram_user_id == telegram_user_id).first()
+
+
+def filter_by_student_identity(query, student_user: StudentUser, telegram_user_id: str | None = None):
+    linked_telegram_id = telegram_user_id or student_user.telegram_user_id
+    filters = [IncomingQuestion.student_user_id == student_user.id]
+    if linked_telegram_id:
+        filters.append(
+            and_(
+                IncomingQuestion.telegram_user_id == linked_telegram_id,
+                IncomingQuestion.student_user_id.is_(None),
+            )
+        )
+    return query.filter(or_(*filters))
 
 
 def create_message(
@@ -132,7 +156,7 @@ def create_message(
         question_id=item.id,
         sender_role=sender_role,
         text=message_text,
-        created_at=datetime.utcnow(),
+        created_at=now_yekaterinburg(),
     )
     db.add(message)
     db.flush()
@@ -156,7 +180,23 @@ def create_message(
     return message
 
 
-def require_student_access(item: IncomingQuestion, client_id: str | None, telegram_user_id: str | None):
+def require_student_access(
+    item: IncomingQuestion,
+    client_id: str | None,
+    telegram_user_id: str | None,
+    student_user: StudentUser | None = None,
+):
+    if student_user:
+        if item.student_user_id == student_user.id:
+            return
+        if (
+            item.student_user_id is None
+            and student_user.telegram_user_id
+            and item.telegram_user_id == student_user.telegram_user_id
+        ):
+            return
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     if client_id and item.client_id == client_id:
         return
     if telegram_user_id and item.telegram_user_id == telegram_user_id:
@@ -213,11 +253,35 @@ async def create_incoming(
     faculty: str | None = Form(None),
     course: int | None = Form(None),
     files: list[UploadFile] = File(default=[]),
+    authorization: str | None = Header(None),
     db: Session = Depends(get_db),
 ):
+    student_user = get_student_from_authorization(authorization, db, required=False)
+
+    if channel == "site":
+        if not student_user:
+            raise HTTPException(status_code=401, detail="Registration is required")
+        client_id = None
+        faculty = student_user.faculty
+        course = student_user.course
+
+    if telegram_user_id:
+        user = get_student_by_telegram(db, telegram_user_id)
+        if user:
+            if not student_user:
+                student_user = user
+            faculty = faculty or user.faculty
+            course = course or user.course
+    elif client_id:
+        user = db.query(StudentUser).filter(StudentUser.client_id == client_id).first()
+        if user:
+            faculty = faculty or user.faculty
+            course = course or user.course
+
     row = IncomingQuestion(
         text=text,
         channel=channel,
+        student_user_id=student_user.id if student_user else None,
         client_id=client_id,
         telegram_user_id=telegram_user_id,
         faculty=faculty,
@@ -226,7 +290,7 @@ async def create_incoming(
         comment=None,
         answer=None,
         answered_at=None,
-        created_at=datetime.utcnow(),
+        created_at=now_yekaterinburg(),
     )
     db.add(row)
     db.flush()
@@ -246,14 +310,22 @@ async def create_incoming(
 def list_incoming(
     client_id: str | None = Query(None, min_length=8),
     telegram_user_id: str | None = Query(None),
+    authorization: str | None = Header(None),
     db: Session = Depends(get_db),
 ):
     query = incoming_query(db).order_by(IncomingQuestion.created_at.desc())
+    student_user = get_student_from_authorization(authorization, db, required=False)
 
-    if client_id:
+    if student_user:
+        query = filter_by_student_identity(query, student_user)
+    elif client_id:
         query = query.filter(IncomingQuestion.client_id == client_id)
     elif telegram_user_id:
-        query = query.filter(IncomingQuestion.telegram_user_id == telegram_user_id)
+        telegram_user = get_student_by_telegram(db, telegram_user_id)
+        if telegram_user:
+            query = filter_by_student_identity(query, telegram_user, telegram_user_id)
+        else:
+            query = query.filter(IncomingQuestion.telegram_user_id == telegram_user_id)
     else:
         return []
 
@@ -267,13 +339,17 @@ async def append_student_message(
     client_id: str | None = Form(None),
     telegram_user_id: str | None = Form(None),
     files: list[UploadFile] = File(default=[]),
+    authorization: str | None = Header(None),
     db: Session = Depends(get_db),
 ):
     item = incoming_query(db).filter(IncomingQuestion.id == incoming_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Incoming question not found")
 
-    require_student_access(item, client_id, telegram_user_id)
+    student_user = get_student_from_authorization(authorization, db, required=False)
+    if not student_user:
+        student_user = get_student_by_telegram(db, telegram_user_id)
+    require_student_access(item, client_id, telegram_user_id, student_user)
 
     if item.status == "done":
         raise HTTPException(status_code=400, detail="Incoming question is already closed")
@@ -294,16 +370,20 @@ def close_incoming(
     incoming_id: str,
     client_id: str | None = Form(None),
     telegram_user_id: str | None = Form(None),
+    authorization: str | None = Header(None),
     db: Session = Depends(get_db),
 ):
     item = incoming_query(db).filter(IncomingQuestion.id == incoming_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Incoming question not found")
 
-    require_student_access(item, client_id, telegram_user_id)
+    student_user = get_student_from_authorization(authorization, db, required=False)
+    if not student_user:
+        student_user = get_student_by_telegram(db, telegram_user_id)
+    require_student_access(item, client_id, telegram_user_id, student_user)
 
     item.status = "done"
-    item.answered_at = datetime.utcnow()
+    item.answered_at = now_yekaterinburg()
     db.commit()
 
     item = incoming_query(db).filter(IncomingQuestion.id == incoming_id).first()

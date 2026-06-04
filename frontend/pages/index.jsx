@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { getClientId } from "../lib/clientId";
+import { useRouter } from "next/router";
+import { authHeaders, getStudentToken } from "../lib/studentAuth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API || process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
 
@@ -39,6 +40,21 @@ async function apiGet(url) {
   if (!r.ok) {
     const t = await r.text().catch(() => "");
     throw new Error(`GET ${url} -> ${r.status} ${t}`);
+  }
+  return r.json();
+}
+
+async function loadSiteProfile() {
+  const token = getStudentToken();
+  if (!token) return null;
+
+  const r = await fetch(`${API_BASE}/api/users/site/me`, {
+    headers: authHeaders(token),
+  });
+  if (r.status === 401 || r.status === 403) return null;
+  if (!r.ok) {
+    const t = await r.text().catch(() => "");
+    throw new Error(`GET /api/users/site/me -> ${r.status} ${t}`);
   }
   return r.json();
 }
@@ -115,9 +131,47 @@ function SkeletonLine({ w = "w-full" }) {
   );
 }
 
+function attachmentHref(file) {
+  if (!file?.url) return "#";
+  return file.url.startsWith("http") ? file.url : `${API_BASE}${file.url}`;
+}
+
+function FaqAttachments({ files, compact = false }) {
+  if (!files?.length) return null;
+
+  return (
+    <div className={clsx("mt-3", compact && "mt-2")}>
+      <div className="text-sm font-semibold text-[rgb(var(--ink-900))]">
+        &#1042;&#1083;&#1086;&#1078;&#1077;&#1085;&#1080;&#1103;
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {files.map((file) => (
+          <a
+            key={file.id || file.url || file.original_name}
+            href={attachmentHref(file)}
+            target="_blank"
+            rel="noreferrer"
+            className={clsx(
+              "inline-flex max-w-full items-center rounded-full border border-[rgb(var(--ink-200))] bg-white",
+              "px-3 py-1.5 text-sm font-semibold text-[rgb(var(--hse-blue))]",
+              "transition-colors hover:border-[rgb(var(--hse-blue))] hover:bg-[rgb(var(--hse-sky))]",
+              "focus:outline-none focus:ring-4 focus:ring-[rgb(var(--hse-sky))]"
+            )}
+          >
+            <span className="truncate">{file.original_name || "file"}</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
+  const router = useRouter();
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profile, setProfile] = useState(null);
   const [items, setItems] = useState([]);
   const [err, setErr] = useState("");
   const [submitted, setSubmitted] = useState(false);
@@ -125,6 +179,27 @@ export default function Home() {
 
   const top = items?.[0] || null;
   const alternatives = useMemo(() => (items || []).slice(1, 5), [items]);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadProfile() {
+      setProfileLoading(true);
+      try {
+        const user = await loadSiteProfile();
+        if (alive) setProfile(user);
+      } catch {
+        if (alive) setProfile(null);
+      } finally {
+        if (alive) setProfileLoading(false);
+      }
+    }
+
+    loadProfile();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   async function search(text) {
     const query = (text ?? "").trim();
@@ -152,6 +227,11 @@ export default function Home() {
     const query = (q ?? "").trim();
     if (!query) return;
 
+    if (!profile) {
+      router.push("/register?next=/");
+      return;
+    }
+
     setErr("");
     setLoading(true);
 
@@ -159,7 +239,6 @@ export default function Home() {
       const formData = new FormData();
       formData.append("text", query);
       formData.append("channel", "site");
-      formData.append("client_id", getClientId());
 
       for (const file of selectedFiles) {
         formData.append("files", file);
@@ -167,6 +246,7 @@ export default function Home() {
 
       const r = await fetch(`${API_BASE}/api/incoming`, {
         method: "POST",
+        headers: authHeaders(),
         body: formData,
       });
 
@@ -223,6 +303,17 @@ export default function Home() {
 
           <nav className="flex items-center gap-3">
             <Link
+              href="/register"
+              className="
+                rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-sm font-semibold text-[rgb(var(--ink-700))]
+                hover:border-[rgb(var(--hse-blue))] hover:bg-[rgb(var(--hse-sky))] hover:text-[rgb(var(--hse-blue))]
+                transition-colors
+                active:scale-[0.98]
+                "
+            >
+              {profile ? "Профиль" : "Регистрация"}
+            </Link>
+            <Link
               href="/my"
               className="
                 rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-sm font-semibold text-[rgb(var(--ink-700))]
@@ -258,6 +349,39 @@ export default function Home() {
           <section className="lg:col-span-7 space-y-6">
             {/* HERO + SEARCH */}
             <Card className="p-8">
+              <div className="mb-4 rounded-2xl border border-[rgb(var(--ink-200))] bg-white px-4 py-3">
+                {profileLoading ? (
+                  <div className="text-sm text-[rgb(var(--ink-500))]">Проверяю регистрацию...</div>
+                ) : profile ? (
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs text-[rgb(var(--ink-500))]">Вы вошли как студент</div>
+                      <div className="text-sm font-semibold text-[rgb(var(--ink-900))]">
+                        {profile.full_name}
+                      </div>
+                    </div>
+                    <Link
+                      href="/register"
+                      className="rounded-full border border-[rgb(var(--ink-200))] bg-white px-3 py-1.5 text-sm font-semibold text-[rgb(var(--hse-blue))] transition-colors hover:bg-[rgb(var(--hse-sky))]"
+                    >
+                      Изменить
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="text-sm text-[rgb(var(--ink-700))]">
+                      Для отправки обращений нужно зарегистрироваться.
+                    </div>
+                    <Link
+                      href="/register"
+                      className="rounded-full bg-[rgb(var(--hse-blue))] px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-[rgb(var(--hse-blue2))]"
+                    >
+                      Зарегистрироваться
+                    </Link>
+                  </div>
+                )}
+              </div>
+
               <div className="flex flex-wrap items-center gap-3">
                 <Pill>Справочник для студентов</Pill>
                 <span className="text-xs text-[rgb(var(--ink-500))]">
@@ -419,23 +543,10 @@ export default function Home() {
                     {top.question}
                   </div>
                   <div className="mt-2 whitespace-pre-line text-[rgb(var(--ink-700))]">
-                    {top.short_answer || "-"}
+                    {top.full_answer || top.short_answer || "-"}
                   </div>
-
+                  <FaqAttachments files={top.attachments} />
                   <div className="mt-4 flex flex-wrap items-center gap-3">
-                    <Link
-                      href={`/faq/${top.id}`}
-                      className="
-                        inline-flex items-center gap-2 text-sm font-semibold
-                        text-[rgb(var(--hse-blue))] hover:text-[rgb(var(--hse-blue2))]
-                        underline decoration-transparent hover:decoration-current
-                        transition-colors
-                        focus:outline-none focus:ring-4 focus:ring-[rgb(var(--hse-sky))] rounded-lg px-1
-                      "
-                    >
-                      Открыть полностью
-                      <IconArrow className="h-4 w-4" />
-                    </Link>
                     <span className="text-xs text-[rgb(var(--ink-500))]">
                       Если ответ не подходит - отправь вопрос в учебный офис.
                     </span>
@@ -456,27 +567,22 @@ export default function Home() {
                   </div>
                   <div className="mt-3 grid gap-3">
                     {alternatives.map((x) => (
-                      <Link
+                      <div
                         key={x.id}
-                        href={`/faq/${x.id}`}
                         className="
                           group rounded-2xl border border-[rgb(var(--ink-200))] bg-white p-4
                           hover:border-[rgb(var(--hse-blue))] hover:shadow-[0_10px_30px_rgba(17,24,39,0.07)]
                           transition-all
-                          active:scale-[0.99]
-                          focus:outline-none focus:ring-4 focus:ring-[rgb(var(--hse-sky))]
                         "
                       >
                         <div className="text-sm font-semibold text-[rgb(var(--ink-900))]">
                           {x.question}
                         </div>
-                        <div className="mt-1 line-clamp-2 text-sm text-[rgb(var(--ink-700))]">
-                          {x.short_answer || ""}
+                        <div className="mt-1 whitespace-pre-line text-sm text-[rgb(var(--ink-700))]">
+                          {x.full_answer || x.short_answer || ""}
                         </div>
-                        <div className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-[rgb(var(--hse-blue))] opacity-0 group-hover:opacity-100 transition-opacity">
-                          Открыть <IconArrow className="h-4 w-4" />
-                        </div>
-                      </Link>
+                        <FaqAttachments files={x.attachments} compact />
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -491,7 +597,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={submitIncoming}
-                  disabled={!q.trim() || loading || submitted}
+                  disabled={!q.trim() || loading || submitted || profileLoading}
                   className={clsx(
                     "rounded-2xl px-4 py-2 text-sm font-semibold",
                     "transition-all active:scale-[0.98]",
@@ -499,10 +605,10 @@ export default function Home() {
                     submitted
                       ? "bg-green-600 text-white"
                       : "bg-[rgb(var(--hse-blue))] text-white hover:bg-[rgb(var(--hse-blue2))] shadow-[0_10px_20px_rgba(15,45,105,0.15)] hover:shadow-[0_14px_28px_rgba(15,45,105,0.18)]",
-                    (!q.trim() || loading) && "opacity-60 cursor-not-allowed"
+                    (!q.trim() || loading || profileLoading) && "opacity-60 cursor-not-allowed"
                   )}
                 >
-                  {submitted ? "Отправлено ✓" : "Отправить"}
+                  {submitted ? "Отправлено ✓" : profile ? "Отправить" : "Зарегистрироваться"}
                 </button>
               </div>
             </Card>

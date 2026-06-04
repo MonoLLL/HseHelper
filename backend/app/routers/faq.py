@@ -1,20 +1,44 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from pathlib import Path
 from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session, joinedload
+
 from ..db import get_db
-from ..models import FAQ
+from ..faq_utils import faq_to_out
+from ..models import FAQ, FAQAttachment
 from ..schemas import FAQOut
 
 router = APIRouter()
 
 @router.get("/faq/{faq_id}", response_model=FAQOut)
 def get_faq(faq_id: UUID, db: Session = Depends(get_db)):
-    row = db.query(FAQ).filter(FAQ.id==faq_id, FAQ.status!="archived").first()
+    row = (
+        db.query(FAQ)
+        .options(joinedload(FAQ.attachments))
+        .filter(FAQ.id == faq_id, FAQ.status != "archived")
+        .first()
+    )
     if not row: raise HTTPException(404, "FAQ not found")
-    return FAQOut(
-        id=row.id, question=row.question, short_answer=row.short_answer, full_answer=row.full_answer,
-        category_id=row.category_id, tags=row.tags, synonyms=row.synonyms,
-        faculty_ids=row.faculty_ids, program_ids=row.program_ids,
-        course_min=row.course_min, course_max=row.course_max, source_url=row.source_url,
-        valid_from=row.valid_from, valid_until=row.valid_until, status=row.status
+    return faq_to_out(row)
+
+
+@router.get("/faq/attachments/{attachment_id}/download")
+def download_faq_attachment(
+    attachment_id: UUID,
+    db: Session = Depends(get_db),
+):
+    attachment = db.query(FAQAttachment).filter(FAQAttachment.id == attachment_id).first()
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    file_path = Path(attachment.stored_path)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return FileResponse(
+        path=file_path,
+        media_type=attachment.mime_type,
+        filename=attachment.original_name,
     )

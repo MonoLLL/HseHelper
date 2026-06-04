@@ -35,12 +35,39 @@ const CARD_STYLE = {
 };
 
 
-function fmtDate(dt) {
+function toYekaterinburgDate(dt) {
+  if (!dt) return "";
+
   try {
-    return new Date(dt).toLocaleString();
+    const raw = `${dt}`.trim().replace(/(\.\d{3})\d+/, "$1");
+    const hasTimezone = /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(raw);
+    const date = new Date(hasTimezone ? raw : `${raw}+05:00`);
+    if (Number.isNaN(date.getTime())) return null;
+
+    return date;
   } catch {
-    return "";
+    return null;
   }
+}
+
+
+function fmtDate(dt) {
+  const date = toYekaterinburgDate(dt);
+  if (!date) return "";
+
+  return date.toLocaleString("ru-RU", { timeZone: "Asia/Yekaterinburg" });
+}
+
+
+function fmtTime(dt) {
+  const date = toYekaterinburgDate(dt);
+  if (!date) return "";
+
+  return date.toLocaleTimeString("ru-RU", {
+    timeZone: "Asia/Yekaterinburg",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 
@@ -141,7 +168,7 @@ function MessageBubble({ message }) {
             ))}
           </div>
         ) : null}
-        <div style={{ marginTop: 8, fontSize: 11, color: THEME.ink500 }}>{fmtDate(message.created_at)}</div>
+        <div style={{ marginTop: 8, fontSize: 11, color: THEME.ink500 }}>{fmtTime(message.created_at)}</div>
       </div>
     </div>
   );
@@ -153,6 +180,7 @@ function IncomingCard({ item, token, onUpdated, onTake }) {
   const [files, setFiles] = useState([]);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const student = item.student_user;
 
   async function apiText(url, init) {
     const r = await fetch(url, init);
@@ -268,6 +296,34 @@ function IncomingCard({ item, token, onUpdated, onTake }) {
           </button>
         </div>
       </div>
+
+      {student ? (
+        <div
+          style={{
+            marginTop: 12,
+            padding: "10px 12px",
+            borderRadius: 14,
+            border: `1px solid ${THEME.ink200}`,
+            background: THEME.ink100,
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
+            color: THEME.ink700,
+            fontSize: 13,
+          }}
+        >
+          <span style={{ fontWeight: 900, color: THEME.ink900 }}>{student.full_name}</span>
+          {student.email ? <span>{student.email}</span> : null}
+          {student.faculty ? <span>{student.faculty}</span> : null}
+          {student.course ? <span>{student.course} курс</span> : null}
+          {student.group_name ? <span>{student.group_name}</span> : null}
+          {item.telegram_user_id ? <span>tg: {item.telegram_user_id}</span> : null}
+        </div>
+      ) : item.telegram_user_id ? (
+        <div style={{ marginTop: 12, fontSize: 12, color: THEME.ink500 }}>
+          Telegram ID: {item.telegram_user_id}
+        </div>
+      ) : null}
 
       <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
         {(item.messages || []).map((message) => (
@@ -448,7 +504,7 @@ export default function AdminIncomingPage() {
     if (qq) {
       list = list.filter((item) =>
         (item.messages || []).some((message) => `${message.text || ""}`.toLowerCase().includes(qq)) ||
-        `${item.text || ""} ${item.client_id || ""}`.toLowerCase().includes(qq)
+        `${item.text || ""} ${item.client_id || ""} ${item.student_user?.full_name || ""} ${item.student_user?.group_name || ""}`.toLowerCase().includes(qq)
       );
     }
     return [...list].sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
@@ -527,7 +583,7 @@ export default function AdminIncomingPage() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Поиск по сообщениям и client_id..."
+            placeholder="Поиск по сообщениям, студенту и client_id..."
             style={{ padding: "10px 12px", borderRadius: 14, border: `1px solid ${THEME.ink200}`, background: THEME.white, color: THEME.ink900 }}
           />
         </div>
