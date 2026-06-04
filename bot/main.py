@@ -8,12 +8,14 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
 from api import (
     append_incoming_message,
+    build_public_url,
     close_incoming,
     create_incoming,
+    download_attachment,
     get_registered_user,
     list_incoming,
     login_telegram_with_site_account,
@@ -128,6 +130,49 @@ async def show_incoming_list(target_message: Message, telegram_user_id: str):
     for item in items[:10]:
         markup = incoming_actions_kb(str(item["id"]), item.get("status") == "done")
         await target_message.answer(format_incoming(item), reply_markup=markup)
+        await send_incoming_attachments(target_message, item)
+
+
+def message_attachment_groups(item: dict):
+    messages = item.get("messages") or []
+    if messages:
+        start_index = max(1, len(messages) - 19)
+        for index, message in enumerate(messages[-20:], start=start_index):
+            attachments = message.get("attachments") or []
+            if attachments:
+                yield index, attachments
+        return
+
+    attachments = item.get("attachments") or []
+    if attachments:
+        yield None, attachments
+
+
+async def send_incoming_attachments(target_message: Message, item: dict):
+    for message_index, attachments in message_attachment_groups(item):
+        for attachment in attachments:
+            await send_attachment(target_message, attachment, message_index)
+
+
+async def send_attachment(target_message: Message, attachment: dict, message_index: int | None = None):
+    filename = str(attachment.get("original_name") or "file")
+    path = attachment.get("url")
+    caption_prefix = f"Файл из сообщения {message_index}" if message_index else "Файл"
+    caption = f"{caption_prefix}: {clean(filename)}"
+
+    try:
+        content, _content_type = await download_attachment(path)
+        input_file = BufferedInputFile(content, filename=filename)
+        await target_message.answer_document(input_file, caption=caption)
+    except Exception:
+        logging.exception("Failed to send attachment")
+        public_url = build_public_url(path)
+        if public_url:
+            await target_message.answer(
+                f"{caption_prefix}: <a href=\"{clean(public_url)}\">{clean(filename)}</a>"
+            )
+        else:
+            await target_message.answer(caption)
 
 
 async def append_file_to_state(state: FSMContext, file_info: dict):
@@ -600,6 +645,7 @@ async def cb_reply_incoming(callback: CallbackQuery, state: FSMContext):
 
     if selected:
         await callback.message.answer(format_incoming(selected))
+        await send_incoming_attachments(callback.message, selected)
 
     await callback.message.answer(
         "Отправь текст сообщения, фото или документы. Можно прислать несколько сообщений подряд, "
@@ -644,6 +690,7 @@ async def cb_send_dialog_message(callback: CallbackQuery, state: FSMContext):
         format_incoming(row),
         reply_markup=incoming_actions_kb(str(row["id"]), row.get("status") == "done"),
     )
+    await send_incoming_attachments(callback.message, row)
     await callback.answer()
     await state.clear()
 
@@ -669,6 +716,7 @@ async def cb_close_incoming(callback: CallbackQuery):
 
     await callback.message.answer("Диалог закрыт. Если появятся новые вопросы, можно создать новое обращение.")
     await callback.message.answer(format_incoming(row))
+    await send_incoming_attachments(callback.message, row)
     await callback.answer()
 
 
@@ -813,6 +861,7 @@ async def cb_send_incoming(callback: CallbackQuery, state: FSMContext):
         format_incoming(row),
         reply_markup=incoming_actions_kb(str(row["id"]), row.get("status") == "done"),
     )
+    await send_incoming_attachments(callback.message, row)
     await callback.answer()
     await state.clear()
 

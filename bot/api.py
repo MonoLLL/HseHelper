@@ -4,6 +4,14 @@ import httpx
 from config import API_BASE
 
 
+PUBLIC_API_BASE = (
+    os.getenv("PUBLIC_API_BASE")
+    or os.getenv("PUBLIC_BASE_URL")
+    or os.getenv("NEXT_PUBLIC_API")
+    or os.getenv("NEXT_PUBLIC_API_BASE")
+    or ""
+)
+
 DEFAULT_CANDIDATE_BASES = (
     "http://localhost:8000",
     "http://127.0.0.1:8000",
@@ -59,6 +67,27 @@ def get_api_base() -> str:
 
 def build_api_url(path: str) -> str:
     return f"{get_api_base()}{path}"
+
+
+def build_public_url(path: str | None) -> str:
+    if not path:
+        return ""
+    if path.startswith("http://") or path.startswith("https://"):
+        return path
+
+    base = (PUBLIC_API_BASE or get_api_base()).rstrip("/")
+    return f"{base}/{path.lstrip('/')}"
+
+
+async def download_attachment(path: str):
+    if path.startswith("http://") or path.startswith("https://"):
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.get(path)
+            response.raise_for_status()
+            return response.content, response.headers.get("content-type", "")
+
+    response = await _request("GET", path, timeout=60)
+    return response.content, response.headers.get("content-type", "")
 
 
 async def _request(method: str, path: str, **kwargs):
